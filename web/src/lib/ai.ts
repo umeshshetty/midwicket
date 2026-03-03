@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import type { GraphNode, Tension } from '../types'
 
 const SYSTEM_PROMPT = `You are a "Thinking Partner" — not an assistant that gives direct answers, but a Socratic guide that helps the user think more clearly.
 
@@ -73,10 +74,53 @@ export async function streamChat(
   }
 }
 
+/**
+ * Formats the top-10 notes (caller is responsible for pre-sorting by relevance)
+ * into a context string for the AI system prompt.
+ */
 export function buildNotesContext(notes: Array<{ title: string; plainText: string; createdAt: string }>): string {
   if (notes.length === 0) return ''
   return notes
-    .slice(0, 10)  // last 10 notes for context
+    .slice(0, 10)
     .map(n => `[${new Date(n.createdAt).toLocaleDateString()}] ${n.title}: ${n.plainText.slice(0, 300)}`)
     .join('\n\n')
+}
+
+/**
+ * Builds a context section from project/org entity nodes that have AI-maintained summaries.
+ * Injected into the chat system prompt so the AI knows current project states.
+ */
+export function buildProjectContext(graphNodes: GraphNode[]): string {
+  const projects = graphNodes.filter(
+    n =>
+      n.type === 'entity' &&
+      (n.entityType === 'project' || n.entityType === 'organization') &&
+      n.metadata?.summary
+  )
+  if (projects.length === 0) return ''
+
+  const lines = projects.map(n => {
+    const m = n.metadata!
+    let line = `${n.label}${m.status ? ` (${m.status})` : ''}: ${m.summary}`
+    if (m.openQuestions?.length) line += ` | Open: ${m.openQuestions.join('; ')}`
+    if (m.blockers?.length) line += ` | Blockers: ${m.blockers.join('; ')}`
+    return line
+  })
+
+  return 'PROJECT BRIEFS:\n' + lines.join('\n')
+}
+
+/**
+ * Builds a context section from undismissed tensions (contradictions).
+ * Injected into the chat system prompt so the AI can proactively surface conflicts.
+ */
+export function buildTensionsContext(tensions: Tension[]): string {
+  const pending = tensions.filter(t => !t.isDismissed)
+  if (pending.length === 0) return ''
+
+  const lines = pending.map(
+    t => `${t.entityLabel}: ${t.conflictDescription} | Was: "${t.existingFact}" → Now: "${t.newFact}"`
+  )
+
+  return 'UNRESOLVED CONTRADICTIONS (address proactively if relevant):\n' + lines.join('\n')
 }

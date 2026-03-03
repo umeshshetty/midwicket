@@ -20,7 +20,7 @@ export interface ChatMessage {
   isStreaming?: boolean
 }
 
-export type View = 'inbox' | 'note' | 'search' | 'graph' | 'reminders' | 'people' | 'work'
+export type View = 'inbox' | 'note' | 'search' | 'graph' | 'reminders' | 'people' | 'work' | 'tensions'
 
 export interface UIState {
   view: View
@@ -58,6 +58,11 @@ export interface EntityMetadata {
   industry?: string
   // Shared
   lastMentionedAt?: string   // ISO date of most recent note mentioning this entity
+  // Living context (AI-maintained)
+  summary?: string           // ≤100 word current state, maintained by contextAgent
+  openQuestions?: string[]   // Outstanding unknowns for this project/org
+  blockers?: string[]        // Current blockers
+  lastSummaryAt?: string     // ISO date of last context update
 }
 
 export interface GraphNode {
@@ -87,6 +92,19 @@ export interface GraphEdge {
   weight: number        // 1–10
   noteIds: string[]
   createdAt: string
+}
+
+// ─── TENSION TYPES ───────────────────────────────────────────────────────────
+
+export interface Tension {
+  id: string
+  noteId: string
+  entityLabel: string
+  conflictDescription: string  // ≤20 words
+  existingFact: string         // what older notes established
+  newFact: string              // what this note says
+  createdAt: string
+  isDismissed: boolean
 }
 
 // ─── REMINDER TYPES ──────────────────────────────────────────────────────────

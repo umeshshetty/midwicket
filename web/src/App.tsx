@@ -11,6 +11,7 @@ import GraphView from './components/graph/GraphView'
 import RemindersView from './components/reminders/RemindersView'
 import PeopleView from './components/people/PeopleView'
 import WorkView from './components/work/WorkView'
+import TensionsView from './components/tensions/TensionsView'
 
 export default function App() {
   const { view, isChatOpen, setSearchQuery } = useUIStore()
@@ -70,6 +71,9 @@ export default function App() {
             )}
             {view === 'work' && (
               <WorkView />
+            )}
+            {view === 'tensions' && (
+              <TensionsView />
             )}
           </main>
 

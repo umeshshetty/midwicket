@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Briefcase, ArrowLeft, FileText, Users } from 'lucide-react'
+import { Briefcase, ArrowLeft, FileText, Users, HelpCircle, AlertOctagon, Sparkles } from 'lucide-react'
 import { useGraphStore } from '../../stores/graphStore'
 import { useNotesStore } from '../../stores/notesStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -169,6 +169,56 @@ function WorkDetail({ node, onClose }: { node: GraphNode; onClose: () => void })
           </div>
         )}
       </div>
+
+      {/* Project Brief (AI-maintained living context) */}
+      {m?.summary && (
+        <div className="px-5 py-4 border-b space-y-3" style={{ borderColor: '#2e2e35' }}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <Sparkles size={13} style={{ color: '#f59e0b' }} />
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#f59e0b' }}>
+              Living Brief
+            </span>
+          </div>
+          <p
+            className="text-sm rounded-lg px-3 py-2 leading-relaxed"
+            style={{ background: 'rgba(245,158,11,0.08)', color: '#d4a84b', borderLeft: '2px solid #f59e0b40' }}
+          >
+            {m.summary}
+          </p>
+          {m.openQuestions && m.openQuestions.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1 mb-1.5">
+                <HelpCircle size={12} style={{ color: '#9090a8' }} />
+                <span className="text-xs" style={{ color: '#9090a8' }}>Open questions</span>
+              </div>
+              <ul className="space-y-1">
+                {m.openQuestions.map((q, i) => (
+                  <li key={i} className="text-xs" style={{ color: '#9090a8' }}>• {q}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {m.blockers && m.blockers.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1 mb-1.5">
+                <AlertOctagon size={12} style={{ color: '#f43f5e' }} />
+                <span className="text-xs" style={{ color: '#f43f5e' }}>Blockers</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {m.blockers.map((b, i) => (
+                  <span
+                    key={i}
+                    className="text-xs rounded-full px-2 py-0.5"
+                    style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e' }}
+                  >
+                    {b}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Notes */}
       <div className="flex-1 overflow-y-auto px-5 py-4">

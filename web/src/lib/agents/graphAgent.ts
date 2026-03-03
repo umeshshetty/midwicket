@@ -4,8 +4,11 @@
  * Pass 1: Extract entities from the new note (Haiku API call)
  * Pass 1b: Look up extracted entity names in the existing graph (local, FREE)
  *           → returns the most relevant related notes (graph-guided retrieval)
- * Pass 2: If related notes found, ask Haiku to identify cross-note relationships
- *           and shared concepts (second Haiku API call)
+ * Pass 2: If related notes found, ask Haiku to identify cross-note relationships,
+ *           shared concepts, AND contradictions with established facts (second Haiku API call)
+ *
+ * After Pass 1: contextAgent fires in background for project/org entities (no await)
+ * After Pass 2: any detected contradictions are stored in tensionsStore
  *
  * As the graph grows, link quality IMPROVES because the graph acts as an index.
  */
@@ -124,8 +127,22 @@ const RELATIONSHIP_TOOLS: Anthropic.Tool[] = [
             required: ['note_id', 'concept'],
           },
         },
+        contradictions: {
+          type: 'array',
+          description: 'Facts in this note that contradict what the related notes established. Only include clear, specific conflicts.',
+          items: {
+            type: 'object',
+            properties: {
+              entity: { type: 'string', description: 'The entity name involved in the contradiction' },
+              conflict_description: { type: 'string', description: 'Plain description of the conflict in ≤20 words' },
+              existing_fact: { type: 'string', description: 'What the related notes established (≤15 words)' },
+              new_fact: { type: 'string', description: 'What this new note says instead (≤15 words)' },
+            },
+            required: ['entity', 'conflict_description', 'existing_fact', 'new_fact'],
+          },
+        },
       },
-      required: ['relationships', 'shared_concepts'],
+      required: ['relationships', 'shared_concepts', 'contradictions'],
     },
   },
 ]
@@ -133,7 +150,8 @@ const RELATIONSHIP_TOOLS: Anthropic.Tool[] = [
 const RELATIONSHIP_SYSTEM = `You are a knowledge graph relationship engine.
 Call extract_relationships exactly once.
 Focus on relationships explicitly stated or strongly implied in the note text.
-For shared_concepts, only include notes with genuine thematic overlap — not superficial keyword matches.`
+For shared_concepts, only include notes with genuine thematic overlap — not superficial keyword matches.
+For contradictions, only flag specific, concrete conflicts where this note clearly contradicts an established fact in the related notes (e.g., role change, org change, status flip). Omit vague or uncertain conflicts.`
 
 // ─── Pass 1b: Local Graph Index Lookup ───────────────────────────────────────
 
@@ -180,6 +198,12 @@ interface ExtractedEntities {
 interface ExtractedRelationships {
   relationships: Array<{ from_entity: string; to_entity: string; label: string; weight: number }>
   shared_concepts: Array<{ note_id: string; concept: string }>
+  contradictions: Array<{
+    entity: string
+    conflict_description: string
+    existing_fact: string
+    new_fact: string
+  }>
 }
 
 export async function analyzeNoteForGraph(
@@ -256,6 +280,30 @@ export async function analyzeNoteForGraph(
     // Merge with existing entity map (for Pass 2 relationship resolution)
     const fullEntityMap = new Map([...existingEntityMap, ...newEntityNodeMap])
 
+    // ── Context Agent: update living briefs for project/org entities (background) ──
+    const projectOrgEntities = entities.filter(
+      e => e.type === 'project' || e.type === 'organization'
+    )
+    if (projectOrgEntities.length > 0) {
+      // Fire-and-forget — don't await, runs in parallel with Pass 2
+      import('./contextAgent').then(({ analyzeEntityContext }) => {
+        for (const entity of projectOrgEntities) {
+          const nodeId = newEntityNodeMap.get(entity.name.toLowerCase())
+          if (nodeId) {
+            analyzeEntityContext(
+              nodeId,
+              entity.name,
+              entity.type as EntityType,
+              note.id,
+              note,
+              allNotes,
+              graphStore
+            )
+          }
+        }
+      }).catch(err => console.warn('[GraphAgent] contextAgent import failed', err))
+    }
+
     // ── Pass 2: Relationship analysis (only if we have related notes) ─────
     if (relatedNoteIds.length > 0) {
       const relatedNotes = allNotes.filter(n => relatedNoteIds.includes(n.id))
@@ -287,7 +335,8 @@ Identify entity relationships and shared concepts between the current note and t
 
       const pass2Tool = pass2Response.content.find(b => b.type === 'tool_use')
       if (pass2Tool && pass2Tool.type === 'tool_use') {
-        const { relationships, shared_concepts } = pass2Tool.input as ExtractedRelationships
+        const { relationships, shared_concepts, contradictions } =
+          pass2Tool.input as ExtractedRelationships
 
         // Upsert entity↔entity relationships
         for (const rel of relationships) {
@@ -310,6 +359,24 @@ Identify entity relationships and shared concepts between the current note and t
               note.id
             )
           }
+        }
+
+        // Store detected contradictions in tensionsStore
+        if (contradictions && contradictions.length > 0) {
+          import('../../stores/tensionsStore')
+            .then(({ useTensionsStore }) => {
+              const { addTension } = useTensionsStore.getState()
+              for (const c of contradictions) {
+                addTension({
+                  noteId: note.id,
+                  entityLabel: c.entity,
+                  conflictDescription: c.conflict_description,
+                  existingFact: c.existing_fact,
+                  newFact: c.new_fact,
+                })
+              }
+            })
+            .catch(err => console.warn('[GraphAgent] tensionsStore import failed', err))
         }
       }
     }

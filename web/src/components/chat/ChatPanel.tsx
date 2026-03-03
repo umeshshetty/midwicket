@@ -1,8 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Send, Trash2, Bot, User, Loader2, AlertCircle } from 'lucide-react'
 import { useChatStore } from '../../stores/chatStore'
 import { useNotesStore } from '../../stores/notesStore'
-import { streamChat, buildNotesContext } from '../../lib/ai'
+import { useGraphStore } from '../../stores/graphStore'
+import { useTensionsStore } from '../../stores/tensionsStore'
+import { streamChat, buildNotesContext, buildProjectContext, buildTensionsContext } from '../../lib/ai'
+import { computeDecayScore } from '../../lib/decay'
 import type { ChatTurn } from '../../lib/ai'
 
 function MessageBubble({ role, content, isStreaming }: { role: 'user' | 'assistant'; content: string; isStreaming?: boolean }) {
@@ -58,6 +61,17 @@ export default function ChatPanel() {
 
   const { messages, isLoading, addMessage, updateMessage, clearMessages, setLoading } = useChatStore()
   const notes = useNotesStore(s => s.notes)
+  const graphNodes = useGraphStore(s => s.nodes)
+  const tensions = useTensionsStore(s => s.tensions)
+
+  // Decay-sorted notes: most relevant (recent + graph-connected) first
+  const sortedNotes = useMemo(
+    () => [...notes].sort(
+      (a, b) => computeDecayScore(b.id, b.updatedAt, graphNodes)
+               - computeDecayScore(a.id, a.updatedAt, graphNodes)
+    ),
+    [notes, graphNodes]
+  )
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -73,8 +87,11 @@ export default function ChatPanel() {
     // Add user message
     addMessage('user', trimmed)
 
-    // Build context from notes
-    const notesContext = buildNotesContext(notes)
+    // Build combined context: decay-scored notes + project briefs + tensions
+    const notesCtx = buildNotesContext(sortedNotes)
+    const projectCtx = buildProjectContext(graphNodes)
+    const tensionsCtx = buildTensionsContext(tensions)
+    const notesContext = [notesCtx, projectCtx, tensionsCtx].filter(Boolean).join('\n\n---\n')
 
     // Build conversation history for API
     const history: ChatTurn[] = messages
