@@ -1,0 +1,140 @@
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import { v4 as uuidv4 } from 'uuid'
+import type { Note } from '../types'
+import { enqueueNoteAnalysis, cancelAnalysis } from '../lib/agents/agentQueue'
+
+interface NotesStore {
+  notes: Note[]
+  addNote: (partial: Partial<Note> & { plainText: string; content: string }) => Note
+  updateNote: (id: string, updates: Partial<Note>) => void
+  deleteNote: (id: string) => void
+  togglePin: (id: string) => void
+  getNoteById: (id: string) => Note | undefined
+  searchNotes: (query: string) => Note[]
+}
+
+function extractTitle(plainText: string): string {
+  const firstLine = plainText.split('\n')[0]?.trim() ?? ''
+  if (firstLine.length > 0) {
+    return firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine
+  }
+  return 'Untitled note'
+}
+
+function extractTags(plainText: string): string[] {
+  const matches = plainText.match(/#([a-zA-Z0-9_-]+)/g) ?? []
+  return [...new Set(matches.map(t => t.slice(1)))]
+}
+
+export const useNotesStore = create<NotesStore>()(
+  persist(
+    (set, get) => ({
+      notes: [],
+
+      addNote: (partial) => {
+        const now = new Date().toISOString()
+        const note: Note = {
+          id: uuidv4(),
+          content: partial.content,
+          plainText: partial.plainText,
+          title: partial.title ?? extractTitle(partial.plainText),
+          tags: partial.tags ?? extractTags(partial.plainText),
+          createdAt: now,
+          updatedAt: now,
+          isPinned: partial.isPinned ?? false,
+          isVoiceCapture: partial.isVoiceCapture ?? false,
+          sourceType: partial.sourceType ?? 'text',
+          wordCount: partial.plainText.split(/\s+/).filter(Boolean).length,
+        }
+        set(state => ({ notes: [note, ...state.notes] }))
+        scheduleAgentAnalysis(note.id)
+        return note
+      },
+
+      updateNote: (id, updates) => {
+        set(state => ({
+          notes: state.notes.map(n => {
+            if (n.id !== id) return n
+            const updated = { ...n, ...updates, updatedAt: new Date().toISOString() }
+            if (updates.plainText !== undefined) {
+              updated.title = updates.title ?? extractTitle(updates.plainText)
+              updated.tags = updates.tags ?? extractTags(updates.plainText)
+              updated.wordCount = updates.plainText.split(/\s+/).filter(Boolean).length
+            }
+            return updated
+          }),
+        }))
+        // Only re-analyze when content actually changed
+        if (updates.plainText !== undefined || updates.content !== undefined) {
+          scheduleAgentAnalysis(id)
+        }
+      },
+
+      deleteNote: (id) => {
+        cancelAnalysis(id)
+        set(state => ({ notes: state.notes.filter(n => n.id !== id) }))
+        // Clean up graph + reminders asynchronously
+        Promise.all([
+          import('./graphStore').then(m => m.useGraphStore.getState().removeNoteFromGraph(id)),
+          import('./remindersStore').then(m => m.useRemindersStore.getState().deleteRemindersForNote(id)),
+        ]).catch(() => {})
+      },
+
+      togglePin: (id) => {
+        set(state => ({
+          notes: state.notes.map(n =>
+            n.id === id ? { ...n, isPinned: !n.isPinned, updatedAt: new Date().toISOString() } : n
+          ),
+        }))
+      },
+
+      getNoteById: (id) => get().notes.find(n => n.id === id),
+
+      searchNotes: (query) => {
+        if (!query.trim()) return get().notes
+        const q = query.toLowerCase()
+        return get().notes.filter(n =>
+          n.plainText.toLowerCase().includes(q) ||
+          n.title.toLowerCase().includes(q) ||
+          n.tags.some(t => t.toLowerCase().includes(q))
+        )
+      },
+    }),
+    {
+      name: 'midwicket-notes',
+      version: 1,
+    }
+  )
+)
+
+/**
+ * Schedules both agents (graph + reminder) for a note.
+ * Uses dynamic imports to prevent circular dependencies.
+ * Fire-and-forget — errors are caught and logged only.
+ */
+function scheduleAgentAnalysis(noteId: string): void {
+  enqueueNoteAnalysis(noteId, async (id) => {
+    try {
+      const [{ analyzeNoteForGraph }, { analyzeNoteForReminders }] = await Promise.all([
+        import('../lib/agents/graphAgent'),
+        import('../lib/agents/reminderAgent'),
+      ])
+      const [{ useGraphStore }, { useRemindersStore }] = await Promise.all([
+        import('./graphStore'),
+        import('./remindersStore'),
+      ])
+
+      const { notes } = useNotesStore.getState()
+      const note = notes.find(n => n.id === id)
+      if (!note || note.plainText.trim().length < 10) return
+
+      await Promise.all([
+        analyzeNoteForGraph(note, useGraphStore.getState(), notes),
+        analyzeNoteForReminders(note, useRemindersStore.getState()),
+      ])
+    } catch (err) {
+      console.warn('[AgentQueue] Analysis failed for note', noteId, err)
+    }
+  })
+}

@@ -1,0 +1,11 @@
+# Claude session data
+.claude/
+
+# OS
+.DS_Store
+
+# web build artifacts & secrets (also covered by web/.gitignore)
+web/node_modules/
+web/dist/
+web/.env.local
+web/*.local
