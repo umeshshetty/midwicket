@@ -20,7 +20,7 @@ export interface ChatMessage {
   isStreaming?: boolean
 }
 
-export type View = 'inbox' | 'note' | 'search' | 'graph' | 'reminders' | 'people' | 'work' | 'tensions'
+export type View = 'inbox' | 'note' | 'search' | 'graph' | 'reminders' | 'people' | 'work' | 'tensions' | 'sieve'
 
 export interface UIState {
   view: View
@@ -105,6 +105,34 @@ export interface Tension {
   newFact: string              // what this note says
   createdAt: string
   isDismissed: boolean
+}
+
+// ─── BRAIN DUMP / SIEVE TYPES ───────────────────────────────────────────────
+
+export interface SieveItem {
+  text: string
+  noteId?: string  // if converted to a note
+}
+
+export interface BrainDump {
+  id: string
+  rawText: string
+  actionable: SieveItem[]
+  incubating: SieveItem[]
+  questions: SieveItem[]
+  emotional: SieveItem[]
+  createdAt: string
+}
+
+// ─── CHAT THREAD TYPES ──────────────────────────────────────────────────────
+
+export interface ChatThread {
+  id: string
+  topic: string           // short label for the thread
+  projectEntity?: string  // linked entity label if applicable
+  lastActiveAt: string
+  summary?: string        // AI-generated 1-2 sentence state summary
+  messageCount: number
 }
 
 // ─── REMINDER TYPES ──────────────────────────────────────────────────────────

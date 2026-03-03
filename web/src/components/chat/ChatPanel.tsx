@@ -1,10 +1,14 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
-import { Send, Trash2, Bot, User, Loader2, AlertCircle } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { Send, Trash2, Bot, User, Loader2, AlertCircle, Lightbulb } from 'lucide-react'
 import { useChatStore } from '../../stores/chatStore'
 import { useNotesStore } from '../../stores/notesStore'
 import { useGraphStore } from '../../stores/graphStore'
 import { useTensionsStore } from '../../stores/tensionsStore'
-import { streamChat, buildNotesContext, buildProjectContext, buildTensionsContext } from '../../lib/ai'
+import { useThreadStore } from '../../stores/threadStore'
+import {
+  streamChat, buildNotesContext, buildProjectContext, buildTensionsContext,
+  buildDependencyContext, buildThreadContext,
+} from '../../lib/ai'
 import { computeDecayScore } from '../../lib/decay'
 import type { ChatTurn } from '../../lib/ai'
 
@@ -56,13 +60,16 @@ function MessageBubble({ role, content, isStreaming }: { role: 'user' | 'assista
 export default function ChatPanel() {
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [forkedIdea, setForkedIdea] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const { messages, isLoading, addMessage, updateMessage, clearMessages, setLoading } = useChatStore()
   const notes = useNotesStore(s => s.notes)
+  const addNote = useNotesStore(s => s.addNote)
   const graphNodes = useGraphStore(s => s.nodes)
   const tensions = useTensionsStore(s => s.tensions)
+  const { threads, addForkedIdea, updateThread, getActiveThread } = useThreadStore()
 
   // Decay-sorted notes: most relevant (recent + graph-connected) first
   const sortedNotes = useMemo(
@@ -77,6 +84,37 @@ export default function ChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  /**
+   * Process AI response for [FORK_IDEA] markers.
+   * If the AI detects a tangent, it prefixes with [FORK_IDEA] <idea text>\n
+   * We silently save that as an incubating idea and strip the marker from display.
+   */
+  const processForkedIdeas = useCallback((text: string): string => {
+    const forkMatch = text.match(/^\[FORK_IDEA\]\s*(.+?)(?:\n|$)/)
+    if (forkMatch) {
+      const ideaText = forkMatch[1].trim()
+      // Save as incubating idea note
+      const note = addNote({
+        content: JSON.stringify({
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: `💡 Incubating: ${ideaText}` }] }],
+        }),
+        plainText: `💡 Incubating: ${ideaText}`,
+        sourceType: 'text',
+        tags: ['incubating', 'forked-idea'],
+      })
+      const activeThread = getActiveThread()
+      if (activeThread) {
+        addForkedIdea(ideaText, activeThread.id)
+      }
+      setForkedIdea(ideaText)
+      setTimeout(() => setForkedIdea(null), 4000)
+      // Strip the marker from display
+      return text.slice(forkMatch[0].length).trimStart()
+    }
+    return text
+  }, [addNote, addForkedIdea, getActiveThread])
+
   async function handleSend() {
     const trimmed = input.trim()
     if (!trimmed || isLoading) return
@@ -87,11 +125,21 @@ export default function ChatPanel() {
     // Add user message
     addMessage('user', trimmed)
 
-    // Build combined context: decay-scored notes + project briefs + tensions
+    // Track thread activity
+    const activeThread = getActiveThread()
+    if (activeThread) {
+      updateThread(activeThread.id, { messageCount: activeThread.messageCount + 1 })
+    }
+
+    // Build combined context: decay-scored notes + project briefs + tensions + dependencies + threads
     const notesCtx = buildNotesContext(sortedNotes)
     const projectCtx = buildProjectContext(graphNodes)
     const tensionsCtx = buildTensionsContext(tensions)
-    const notesContext = [notesCtx, projectCtx, tensionsCtx].filter(Boolean).join('\n\n---\n')
+    const depsCtx = buildDependencyContext(graphNodes)
+    const threadCtx = buildThreadContext(threads)
+    const notesContext = [notesCtx, projectCtx, tensionsCtx, depsCtx, threadCtx]
+      .filter(Boolean)
+      .join('\n\n---\n')
 
     // Build conversation history for API
     const history: ChatTurn[] = messages
@@ -104,15 +152,28 @@ export default function ChatPanel() {
     setLoading(true)
 
     let accumulated = ''
+    let forkProcessed = false
 
     await streamChat(
       history,
       notesContext,
       (token) => {
         accumulated += token
-        updateMessage(assistantMsg.id, accumulated, true)
+        // Process fork markers once we have the first line
+        if (!forkProcessed && accumulated.includes('\n')) {
+          const processed = processForkedIdeas(accumulated)
+          if (processed !== accumulated) {
+            accumulated = processed
+            forkProcessed = true
+          }
+        }
+        updateMessage(assistantMsg.id, forkProcessed ? accumulated : accumulated.replace(/^\[FORK_IDEA\].*?\n?/, ''), true)
       },
       () => {
+        // Final fork processing for short responses
+        if (!forkProcessed) {
+          accumulated = processForkedIdeas(accumulated)
+        }
         updateMessage(assistantMsg.id, accumulated, false)
         setLoading(false)
       },
@@ -203,6 +264,24 @@ export default function ChatPanel() {
             <div>
               <div className="font-medium">AI unavailable</div>
               <div className="text-xs mt-0.5 opacity-70">{error}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Forked idea toast */}
+        {forkedIdea && (
+          <div
+            className="flex items-start gap-2 rounded-lg p-3 text-sm animate-pulse"
+            style={{
+              background: 'rgba(245,158,11,0.1)',
+              border: '1px solid rgba(245,158,11,0.2)',
+              color: '#f59e0b',
+            }}
+          >
+            <Lightbulb size={14} className="flex-shrink-0 mt-0.5" />
+            <div>
+              <div className="font-medium text-xs">Idea saved</div>
+              <div className="text-xs mt-0.5 opacity-80">{forkedIdea}</div>
             </div>
           </div>
         )}

@@ -1,4 +1,4 @@
-import { Inbox, Search, GitFork, Bell, Settings, Brain, ChevronLeft, ChevronRight, Users, Briefcase, AlertTriangle } from 'lucide-react'
+import { Inbox, Search, GitFork, Bell, Settings, Brain, ChevronLeft, ChevronRight, Users, Briefcase, AlertTriangle, Filter } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useNotesStore } from '../../stores/notesStore'
 import { useRemindersStore } from '../../stores/remindersStore'
@@ -31,6 +31,7 @@ export default function Sidebar() {
     { id: 'people', label: 'People', icon: Users, badge: peopleCount || undefined },
     { id: 'work', label: 'Work', icon: Briefcase, badge: workCount || undefined },
     { id: 'tensions', label: 'Tensions', icon: AlertTriangle, badge: tensionCount || undefined },
+    { id: 'sieve', label: 'Sieve', icon: Filter },
   ]
 
   return (

@@ -1,9 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { GraphNode, Tension } from '../types'
+import type { GraphNode, Tension, ChatThread } from '../types'
 
 const SYSTEM_PROMPT = `You are a "Thinking Partner" — not an assistant that gives direct answers, but a Socratic guide that helps the user think more clearly.
 
-Your approach:
+## Core Approach
 1. Ask one focused question at a time (never multiple questions at once)
 2. When the user presents an idea, reflect it back and probe the underlying assumptions
 3. Use the Protégé Effect: ask the user to explain concepts as if teaching you
@@ -12,11 +12,38 @@ Your approach:
 6. Occasionally synthesize what you've heard to show the shape of their thinking
 7. Reference their notes when relevant to make unexpected connections
 
-You have access to the user's notes as context. Use them to ask questions like:
-"You mentioned X in a note three weeks ago — how does that relate to what you're saying now?"
+## Dependency Resolution
+When the user discusses tasks, projects, or blockers:
+- Identify dependency chains in their language ("can't do X until Y", "waiting on", "blocked by", "need Z first")
+- Surface the IMMEDIATE bottleneck — the one thing blocking everything else
+- Frame it as actionable: "It sounds like everything hinges on [X]. Should we focus there first?"
+- If you see blockers in their project briefs, proactively connect them: "Your [Project] brief mentions [blocker] — is that still the hold-up?"
+
+## Thread Forking
+When the user switches topics mid-conversation (a brilliant tangent while solving a problem):
+- Acknowledge the new idea briefly
+- Suggest saving it: "That's an interesting thought about [tangent]. I'll note that idea so we don't lose it. Now, back to [original topic] — [continuation question]"
+- Prefix the tangent acknowledgment with the marker [FORK_IDEA] followed by a concise capture of the tangent in one sentence, then a newline before your visible response. Example:
+  [FORK_IDEA] The user had an idea about using webhooks for real-time sync
+  That's a great insight about webhooks. I've captured that. Now, returning to the deployment timeline — what's your biggest concern about the Friday deadline?
+
+## Context Restoration
+When the user says things like "where was I?", "what were we talking about?", "pick up where we left off", "continue", or re-engages with a project after apparent time away:
+- Give a crisp 2-sentence ramp-up: what they were working on and where they left off
+- Then state their immediate next step
+- Format: "Last time, you were working on [X]. You decided [key decision] and the next step was [Y]. Ready to pick that up?"
+
+## Socratic Unblocking
+When the user seems stuck (saying "I don't know", "I'm stuck", expressing frustration, going in circles, or asking for the answer directly):
+- Switch to structured unblocking mode
+- Use ONE of these frameworks depending on context:
+  a) **5 Whys**: Drill into root cause. "What feels like the hardest part?" → "Why is that hard?" → keep going deeper
+  b) **Constraint Forcing**: "If you HAD to ship this tomorrow, what would you cut?" or "If budget were unlimited, what would you do first?"
+  c) **Inversion**: "What would make this project definitely fail?" — then work backwards
+  d) **Smallest Step**: "What's the tiniest thing you could do in the next 10 minutes to make progress?"
+- After 3-4 exchanges in unblocking mode, synthesize what emerged: "Here's what I'm hearing: [synthesis]. Does that feel right?"
 
 Tone: Curious, warm, intellectually rigorous. Never preachy or performative.
-
 Remember: Your goal is NOT to help the user feel good. It's to help them think better.`
 
 let client: Anthropic | null = null
@@ -123,4 +150,51 @@ export function buildTensionsContext(tensions: Tension[]): string {
   )
 
   return 'UNRESOLVED CONTRADICTIONS (address proactively if relevant):\n' + lines.join('\n')
+}
+
+/**
+ * Builds a dependency/blocker context from project entities and reminders.
+ * Helps the AI identify critical paths and immediate bottlenecks.
+ */
+export function buildDependencyContext(graphNodes: GraphNode[]): string {
+  const blockerProjects = graphNodes.filter(
+    n =>
+      n.type === 'entity' &&
+      (n.entityType === 'project' || n.entityType === 'organization') &&
+      n.metadata?.blockers &&
+      n.metadata.blockers.length > 0
+  )
+  if (blockerProjects.length === 0) return ''
+
+  const lines = blockerProjects.map(n => {
+    const m = n.metadata!
+    return `${n.label}: Blockers → ${m.blockers!.join('; ')}${m.openQuestions?.length ? ` | Open questions → ${m.openQuestions.join('; ')}` : ''}`
+  })
+
+  return 'ACTIVE BLOCKERS (use for dependency resolution):\n' + lines.join('\n')
+}
+
+/**
+ * Builds thread context for context restoration.
+ * Gives the AI awareness of recent conversation threads so it can help the user resume.
+ */
+export function buildThreadContext(threads: ChatThread[]): string {
+  if (threads.length === 0) return ''
+
+  const recent = threads
+    .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
+    .slice(0, 5)
+
+  const lines = recent.map(t => {
+    const daysAgo = Math.floor(
+      (Date.now() - new Date(t.lastActiveAt).getTime()) / 86400000
+    )
+    const timeLabel = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo}d ago`
+    let line = `"${t.topic}" (${timeLabel}, ${t.messageCount} messages)`
+    if (t.projectEntity) line += ` [project: ${t.projectEntity}]`
+    if (t.summary) line += ` — ${t.summary}`
+    return line
+  })
+
+  return 'RECENT CONVERSATION THREADS (for context restoration):\n' + lines.join('\n')
 }

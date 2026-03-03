@@ -12,6 +12,7 @@ import RemindersView from './components/reminders/RemindersView'
 import PeopleView from './components/people/PeopleView'
 import WorkView from './components/work/WorkView'
 import TensionsView from './components/tensions/TensionsView'
+import SieveView from './components/sieve/SieveView'
 
 export default function App() {
   const { view, isChatOpen, setSearchQuery } = useUIStore()
@@ -74,6 +75,9 @@ export default function App() {
             )}
             {view === 'tensions' && (
               <TensionsView />
+            )}
+            {view === 'sieve' && (
+              <SieveView />
             )}
           </main>
 
