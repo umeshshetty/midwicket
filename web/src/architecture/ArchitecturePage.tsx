@@ -1,1045 +1,977 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
-  Brain, Sparkles, GitFork, Users, Briefcase, Bell, Filter, Bot,
-  MessageSquare, Zap, Database, Cpu, ArrowRight, ArrowDown,
+  Brain, Sparkles, GitFork, Users, Bell, Filter, Bot,
+  MessageSquare, Zap, ArrowUpRight, ChevronRight,
   Lightbulb, HelpCircle, Heart, AlertTriangle, Clock, Eye,
-  Layers, Code2, Palette, Type, ChevronRight
 } from 'lucide-react'
 
-// ─── Scroll fade-in hook ─────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   HOOKS
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-function useFadeIn() {
+function useReveal(threshold = 0.15) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          el.style.opacity = '1'
-          el.style.transform = 'translateY(0)'
-        }
-      },
-      { threshold: 0.1 }
+    const obs = new IntersectionObserver(
+      ([e]) => { if (e.isIntersecting) { el.classList.add('revealed'); obs.unobserve(el) } },
+      { threshold },
     )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [threshold])
   return ref
 }
 
-function Section({ children, id }: { children: React.ReactNode; id?: string }) {
-  const ref = useFadeIn()
+function useActiveSection(ids: string[]) {
+  const [active, setActive] = useState('')
+  useEffect(() => {
+    const obs = new IntersectionObserver(
+      entries => entries.forEach(e => { if (e.isIntersecting) setActive(e.target.id) }),
+      { rootMargin: '-40% 0px -55% 0px' },
+    )
+    ids.forEach(id => { const el = document.getElementById(id); if (el) obs.observe(el) })
+    return () => obs.disconnect()
+  }, [ids])
+  return active
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PRIMITIVES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function Reveal({ children, className = '', delay = 0, id }: {
+  children: React.ReactNode; className?: string; delay?: number; id?: string
+}) {
+  const ref = useReveal()
   return (
     <div
       ref={ref}
       id={id}
-      style={{
-        opacity: 0,
-        transform: 'translateY(24px)',
-        transition: 'opacity 0.6s ease, transform 0.6s ease',
-      }}
+      className={`reveal-up ${className}`}
+      style={{ transitionDelay: `${delay}ms` }}
     >
       {children}
     </div>
   )
 }
 
-function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: string }) {
+function Badge({ children, color }: { children: React.ReactNode; color: string }) {
   return (
-    <div className="mb-8">
-      <h2 className="text-2xl font-bold" style={{ color: '#e8e8f0' }}>{children}</h2>
-      {sub && <p className="text-sm mt-1" style={{ color: '#5a5a72' }}>{sub}</p>}
-    </div>
+    <span
+      className="inline-flex items-center gap-1.5 text-[11px] font-medium tracking-wide uppercase rounded-full px-3 py-1"
+      style={{ color, background: `color-mix(in srgb, ${color} 10%, transparent)` }}
+    >
+      {children}
+    </span>
   )
 }
 
-function Divider() {
-  return (
-    <div className="my-16 mx-auto" style={{ maxWidth: 200 }}>
-      <div style={{
-        height: 1,
-        background: 'linear-gradient(90deg, transparent, #8b5cf6, #14b8a6, transparent)',
-      }} />
-    </div>
-  )
-}
+/* ═══════════════════════════════════════════════════════════════════════════
+   NAV
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-// ─── HERO ─────────────────────────────────────────────────────────────────────
-
-function Hero() {
-  return (
-    <div className="relative overflow-hidden" style={{ minHeight: '80vh' }}>
-      {/* Animated gradient background */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: 'radial-gradient(ellipse at 30% 20%, rgba(139,92,246,0.15) 0%, transparent 50%), radial-gradient(ellipse at 70% 80%, rgba(20,184,166,0.1) 0%, transparent 50%)',
-          animation: 'pulse 8s ease-in-out infinite alternate',
-        }}
-      />
-
-      <div className="relative flex flex-col items-center justify-center text-center px-6" style={{ minHeight: '80vh' }}>
-        {/* Logo */}
-        <div
-          className="flex items-center justify-center rounded-2xl mb-8"
-          style={{
-            width: 72,
-            height: 72,
-            background: 'linear-gradient(135deg, #8b5cf6, #14b8a6)',
-            boxShadow: '0 0 60px rgba(139,92,246,0.3), 0 0 120px rgba(20,184,166,0.15)',
-          }}
-        >
-          <Brain size={36} color="white" />
-        </div>
-
-        <h1
-          className="text-5xl font-bold tracking-tight mb-4"
-          style={{
-            background: 'linear-gradient(135deg, #e8e8f0, #8b5cf6, #14b8a6)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-          }}
-        >
-          Midwicket
-        </h1>
-
-        <p className="text-xl font-light mb-3" style={{ color: '#9090a8' }}>
-          A Pure Processing Agent — Your Thinking Partner
-        </p>
-
-        <p className="text-sm max-w-lg leading-relaxed" style={{ color: '#5a5a72' }}>
-          Not an assistant that gives answers, but a cognitive mirror that helps you think better.
-          Captures thoughts, builds a knowledge graph, detects contradictions, and asks the right questions.
-        </p>
-
-        <div className="flex items-center gap-4 mt-8">
-          <a
-            href="/"
-            className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all"
-            style={{ background: 'rgba(139,92,246,0.9)', color: 'white' }}
-          >
-            Open App <ChevronRight size={14} />
-          </a>
-          <a
-            href="#features"
-            className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-all"
-            style={{ background: 'rgba(255,255,255,0.06)', color: '#9090a8', border: '1px solid #2e2e35' }}
-          >
-            Explore Architecture
-          </a>
-        </div>
-
-        <div className="mt-16">
-          <ArrowDown size={20} style={{ color: '#3d3d47' }} className="animate-bounce" />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── FEATURE GRID ─────────────────────────────────────────────────────────────
-
-const FEATURES = [
-  {
-    icon: Sparkles,
-    title: 'Zero-Friction Capture',
-    desc: 'Text, voice, paste — every thought flows to one inbox. Auto-generated titles, hashtag extraction, word counts. Capture now, organize never.',
-    color: '#8b5cf6',
-  },
-  {
-    icon: GitFork,
-    title: 'Knowledge Graph',
-    desc: 'Two-pass AI extracts entities (people, projects, concepts) and discovers relationships across notes. Graph-guided retrieval improves as it grows.',
-    color: '#14b8a6',
-  },
-  {
-    icon: Brain,
-    title: 'Active Intelligence',
-    desc: 'Living project briefs auto-maintained by AI. Contradiction detection flags when new info conflicts with established facts. Time-decay surfaces what matters.',
-    color: '#f59e0b',
-  },
-  {
-    icon: Users,
-    title: 'People & Work Registries',
-    desc: 'Automatic CRM from your notes — roles, organizations, relationships for people. Status, blockers, stakeholders for projects. All AI-extracted.',
-    color: '#14b8a6',
-  },
-  {
-    icon: Bell,
-    title: 'Temporal Awareness',
-    desc: 'Tasks, events, deadlines extracted from natural language. Smart date parsing, priority detection. Grouped by urgency: Overdue, Today, This Week, Later.',
-    color: '#f43f5e',
-  },
-  {
-    icon: Filter,
-    title: 'Cognitive Sieve',
-    desc: 'Brain dump mode: paste stream-of-consciousness, AI sorts into Actionable Steps, Incubating Ideas, Open Questions, and Emotional Offload. One-click to notes.',
-    color: '#8b5cf6',
-  },
-  {
-    icon: Bot,
-    title: 'AI Thinking Partner',
-    desc: 'Socratic chat that asks questions, not answers. Injects note context, project briefs, contradictions, and blockers. Helps you think, not think for you.',
-    color: '#14b8a6',
-  },
-  {
-    icon: MessageSquare,
-    title: 'Thread Intelligence',
-    desc: 'Detects topic switches and saves tangent ideas. "Where was I?" restores context. Dependency resolution surfaces immediate bottlenecks. Socratic unblocking when stuck.',
-    color: '#f59e0b',
-  },
-]
-
-function FeatureGrid() {
-  return (
-    <Section id="features">
-      <SectionTitle sub="Eight interlocking pillars of cognitive offload">Feature Pillars</SectionTitle>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {FEATURES.map((f, i) => {
-          const Icon = f.icon
-          return (
-            <div
-              key={i}
-              className="rounded-xl border p-5 transition-all hover:border-opacity-50"
-              style={{
-                background: '#131315',
-                borderColor: '#2e2e35',
-              }}
-              onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.borderColor = f.color
-                ;(e.currentTarget as HTMLElement).style.boxShadow = `0 0 20px ${f.color}15`
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.borderColor = '#2e2e35'
-                ;(e.currentTarget as HTMLElement).style.boxShadow = 'none'
-              }}
-            >
-              <div
-                className="flex items-center justify-center rounded-lg mb-3"
-                style={{ width: 36, height: 36, background: `${f.color}15` }}
-              >
-                <Icon size={18} style={{ color: f.color }} />
-              </div>
-              <h3 className="text-sm font-semibold mb-2" style={{ color: '#e8e8f0' }}>{f.title}</h3>
-              <p className="text-xs leading-relaxed" style={{ color: '#5a5a72' }}>{f.desc}</p>
-            </div>
-          )
-        })}
-      </div>
-    </Section>
-  )
-}
-
-// ─── DATA FLOW DIAGRAM ───────────────────────────────────────────────────────
-
-function DataFlow() {
-  return (
-    <Section id="dataflow">
-      <SectionTitle sub="What happens when you save a note">Data Flow Architecture</SectionTitle>
-
-      <div className="rounded-xl border p-6 overflow-x-auto" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-        <pre
-          className="text-xs leading-relaxed whitespace-pre"
-          style={{ fontFamily: "'JetBrains Mono', monospace", color: '#9090a8' }}
-        >
-{`  ┌──────────────────┐
-  │   Note Created    │  User saves a note via QuickCapture or NoteEditor
-  └────────┬─────────┘
-           │
-           ▼
-  ┌──────────────────┐
-  │  Agent Queue     │  2-second debounce per note — rapid edits don't spam AI
-  │  (debounce 2s)   │
-  └────────┬─────────┘
-           │
-     ┌─────┴──────┐
-     │            │
-     ▼            ▼
- `}<span style={{ color: '#8b5cf6' }}>{'Graph Agent'}</span>{`   `}<span style={{ color: '#f59e0b' }}>{'Reminder Agent'}</span>{`     ◄── Run in parallel (Promise.all)
-     │            │
-     │            └─► `}<span style={{ color: '#f59e0b' }}>{'extract_reminders'}</span>{` tool (Haiku)
-     │                 → Tasks, events, deadlines with dates
-     │                 → Priority: high / medium / low
-     │                 → Stored in RemindersStore
-     │
-     ├─► `}<span style={{ color: '#8b5cf6' }}>{'Pass 1: extract_entities'}</span>{` tool (Haiku)
-     │    → People, projects, concepts, orgs, events, places, tech, ideas
-     │    → Rich metadata: role, org, status, stakeholders
-     │
-     ├─► `}<span style={{ color: '#14b8a6' }}>{'Pass 1b: Graph Index Lookup'}</span>{`  ◄── `}<span style={{ color: '#14b8a6' }}>{'FREE (no API call)'}</span>{`
-     │    → Match entities against existing graph nodes
-     │    → Find related notes via shared entities
-     │    → Returns up to 10 most relevant notes
-     │
-     ├─► `}<span style={{ color: '#f59e0b' }}>{'Context Agent'}</span>{`  ◄── Fire & forget (30s per-entity debounce)
-     │    → For project/org entities only
-     │    → update_project_context tool (Haiku)
-     │    → Maintains ≤100-word living brief
-     │    → Updates: summary, open questions, blockers
-     │
-     └─► `}<span style={{ color: '#8b5cf6' }}>{'Pass 2: extract_relationships'}</span>{` tool (Haiku)
-          → Only fires if related notes found in Pass 1b
-          → Entity ↔ Entity relationships (with labels + weights)
-          → Note ↔ Note shared concepts (thematic bridges)
-          → `}<span style={{ color: '#f43f5e' }}>{'Contradiction detection'}</span>{` (was X, now Y)
-              → Stored in TensionsStore`}
-        </pre>
-      </div>
-
-      {/* Key insight callout */}
-      <div
-        className="mt-4 rounded-xl border px-5 py-4 flex items-start gap-3"
-        style={{ background: 'rgba(20,184,166,0.06)', borderColor: 'rgba(20,184,166,0.15)' }}
-      >
-        <Lightbulb size={16} style={{ color: '#14b8a6', flexShrink: 0, marginTop: 2 }} />
-        <div>
-          <p className="text-sm font-medium" style={{ color: '#14b8a6' }}>Self-Reinforcing Loop</p>
-          <p className="text-xs mt-1 leading-relaxed" style={{ color: '#5a5a72' }}>
-            Pass 1b uses the existing graph as a retrieval index — no vectors, no embeddings, zero API cost.
-            As you add more notes, the graph grows, which makes Pass 1b find better related notes,
-            which makes Pass 2 discover richer relationships. The system gets smarter with every note.
-          </p>
-        </div>
-      </div>
-    </Section>
-  )
-}
-
-// ─── AGENT CARDS ─────────────────────────────────────────────────────────────
-
-const AGENTS = [
-  {
-    name: 'Graph Agent',
-    icon: GitFork,
-    color: '#8b5cf6',
-    model: 'claude-haiku-4-5',
-    trigger: '2s after note save',
-    tools: ['extract_entities', 'extract_relationships'],
-    passes: [
-      'Pass 1: Extract entities with rich metadata (role, org, status)',
-      'Pass 1b: Local graph index lookup — finds related notes (FREE)',
-      'Pass 2: Discover relationships, shared concepts, contradictions',
-    ],
-    output: 'Graph nodes, edges, tensions',
-  },
-  {
-    name: 'Context Agent',
-    icon: Eye,
-    color: '#f59e0b',
-    model: 'claude-haiku-4-5',
-    trigger: 'After entity upsert (30s debounce)',
-    tools: ['update_project_context'],
-    passes: [
-      'Reads current summary + triggering note + last 3 mentions',
-      'Generates ≤100-word living brief of current state',
-      'Extracts open questions and blockers (max 5 each)',
-    ],
-    output: 'EntityMetadata: summary, openQuestions, blockers',
-  },
-  {
-    name: 'Reminder Agent',
-    icon: Bell,
-    color: '#f43f5e',
-    model: 'claude-haiku-4-5',
-    trigger: '2s after note save',
-    tools: ['extract_reminders'],
-    passes: [
-      'Scans note for temporal language and action items',
-      'Parses dates to ISO 8601 (supports natural language)',
-      'Assigns priority: high (urgent/today), medium (this week), low (someday)',
-    ],
-    output: 'Reminders with action, date, person, type, priority',
-  },
-  {
-    name: 'Sieve Agent',
-    icon: Filter,
-    color: '#8b5cf6',
-    model: 'claude-haiku-4-5',
-    trigger: 'Manual (brain dump submit)',
-    tools: ['parse_brain_dump'],
-    passes: [
-      'Takes raw stream-of-consciousness text input',
-      'Categorizes every thought into exactly one bucket',
-      'Preserves user voice for incubating ideas, cleans up actions',
-    ],
-    output: '4 buckets: actionable, incubating, questions, emotional',
-  },
-]
-
-function AgentCards() {
-  return (
-    <Section id="agents">
-      <SectionTitle sub="Four specialized AI agents work in the background">Agent System</SectionTitle>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {AGENTS.map((agent, i) => {
-          const Icon = agent.icon
-          return (
-            <div
-              key={i}
-              className="rounded-xl border p-5"
-              style={{ background: '#131315', borderColor: '#2e2e35' }}
-            >
-              {/* Header */}
-              <div className="flex items-center gap-3 mb-4">
-                <div
-                  className="flex items-center justify-center rounded-lg"
-                  style={{ width: 36, height: 36, background: `${agent.color}15` }}
-                >
-                  <Icon size={18} style={{ color: agent.color }} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-semibold" style={{ color: '#e8e8f0' }}>{agent.name}</h3>
-                  <p className="text-xs" style={{ color: '#5a5a72' }}>{agent.trigger}</p>
-                </div>
-              </div>
-
-              {/* Model + Tools */}
-              <div className="flex flex-wrap gap-2 mb-3">
-                <span
-                  className="text-xs rounded-full px-2 py-0.5 font-mono"
-                  style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.2)' }}
-                >
-                  {agent.model}
-                </span>
-                {agent.tools.map(tool => (
-                  <span
-                    key={tool}
-                    className="text-xs rounded-full px-2 py-0.5 font-mono"
-                    style={{ background: 'rgba(20,184,166,0.1)', color: '#14b8a6', border: '1px solid rgba(20,184,166,0.2)' }}
-                  >
-                    {tool}
-                  </span>
-                ))}
-              </div>
-
-              {/* Passes */}
-              <div className="flex flex-col gap-1.5 mb-3">
-                {agent.passes.map((pass, j) => (
-                  <div key={j} className="flex items-start gap-2">
-                    <ChevronRight size={12} style={{ color: agent.color, flexShrink: 0, marginTop: 3 }} />
-                    <span className="text-xs leading-relaxed" style={{ color: '#9090a8' }}>{pass}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Output */}
-              <div
-                className="rounded-lg px-3 py-2 text-xs"
-                style={{ background: 'rgba(0,0,0,0.3)', color: '#5a5a72' }}
-              >
-                <span className="font-medium" style={{ color: '#9090a8' }}>Output:</span> {agent.output}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </Section>
-  )
-}
-
-// ─── KNOWLEDGE GRAPH SECTION ─────────────────────────────────────────────────
-
-function GraphSection() {
-  const nodeTypes = [
-    { type: 'Note', color: '#8b5cf6', desc: 'Your captured thoughts' },
-    { type: 'Person', color: '#14b8a6', desc: 'People mentioned in notes' },
-    { type: 'Project', color: '#f59e0b', desc: 'Initiatives and work items' },
-    { type: 'Organization', color: '#14b8a6', desc: 'Companies and teams' },
-    { type: 'Concept', color: '#9090a8', desc: 'Ideas and themes' },
-    { type: 'Technology', color: '#f43f5e', desc: 'Tools and frameworks' },
-  ]
-
-  const edgeTypes = [
-    { type: 'contains', desc: 'Note → Entity', example: 'Note mentions a person', style: 'solid' },
-    { type: 'related_to', desc: 'Entity ↔ Entity', example: '"works at", "founded"', style: 'solid' },
-    { type: 'shares_concept', desc: 'Note ↔ Note', example: 'Thematic bridges across notes', style: 'dashed' },
-  ]
-
-  return (
-    <Section id="graph">
-      <SectionTitle sub="Automatic entity extraction and relationship discovery">Knowledge Graph</SectionTitle>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Node types */}
-        <div className="rounded-xl border p-5" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-          <h3 className="text-sm font-semibold mb-4" style={{ color: '#e8e8f0' }}>Node Types</h3>
-          <div className="flex flex-col gap-2.5">
-            {nodeTypes.map(n => (
-              <div key={n.type} className="flex items-center gap-3">
-                <div
-                  className="rounded-full flex-shrink-0"
-                  style={{ width: 10, height: 10, background: n.color, boxShadow: `0 0 8px ${n.color}40` }}
-                />
-                <span className="text-sm font-medium" style={{ color: n.color, minWidth: 90 }}>{n.type}</span>
-                <span className="text-xs" style={{ color: '#5a5a72' }}>{n.desc}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Edge types */}
-        <div className="rounded-xl border p-5" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-          <h3 className="text-sm font-semibold mb-4" style={{ color: '#e8e8f0' }}>Edge Types</h3>
-          <div className="flex flex-col gap-3">
-            {edgeTypes.map(e => (
-              <div key={e.type} className="flex items-start gap-3">
-                <div
-                  className="mt-1.5 flex-shrink-0"
-                  style={{
-                    width: 24,
-                    height: 2,
-                    background: '#8b5cf6',
-                    borderStyle: e.style === 'dashed' ? 'dashed' : 'solid',
-                  }}
-                />
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-mono font-medium" style={{ color: '#14b8a6' }}>{e.type}</span>
-                    <span className="text-xs" style={{ color: '#5a5a72' }}>{e.desc}</span>
-                  </div>
-                  <span className="text-xs" style={{ color: '#3d3d47' }}>{e.example}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Metadata */}
-          <div className="mt-4 pt-4" style={{ borderTop: '1px solid #2e2e35' }}>
-            <h4 className="text-xs font-semibold mb-2" style={{ color: '#9090a8' }}>Entity Metadata (AI-extracted)</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {['role', 'organization', 'relationship', 'keyFact', 'status', 'blockers', 'stakeholders', 'summary'].map(f => (
-                <span
-                  key={f}
-                  className="text-xs rounded px-1.5 py-0.5 font-mono"
-                  style={{ background: '#1a1a1d', color: '#5a5a72', border: '1px solid #2e2e35' }}
-                >
-                  {f}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </Section>
-  )
-}
-
-// ─── AI CHAT ARCHITECTURE ────────────────────────────────────────────────────
-
-function ChatArchitecture() {
-  const contextLayers = [
-    { label: 'Notes Context', desc: 'Top 10 notes sorted by decay score', color: '#8b5cf6', icon: Layers },
-    { label: 'Project Briefs', desc: 'AI-maintained summaries of active projects', color: '#f59e0b', icon: Briefcase },
-    { label: 'Tensions', desc: 'Unresolved contradictions to surface proactively', color: '#f43f5e', icon: AlertTriangle },
-    { label: 'Active Blockers', desc: 'Dependency context for critical path analysis', color: '#14b8a6', icon: Zap },
-    { label: 'Thread History', desc: 'Recent conversation threads for context restoration', color: '#9090a8', icon: MessageSquare },
-  ]
-
-  const behaviors = [
-    { name: 'Dependency Resolution', desc: 'Detects blocker language, surfaces immediate bottleneck', icon: Zap, color: '#14b8a6' },
-    { name: 'Thread Forking', desc: 'Captures tangent ideas mid-conversation, returns to main topic', icon: GitFork, color: '#f59e0b' },
-    { name: 'Context Restoration', desc: '"Where was I?" → 2-sentence ramp-up + next step', icon: Clock, color: '#8b5cf6' },
-    { name: 'Socratic Unblocking', desc: '5 Whys, Constraint Forcing, Inversion, Smallest Step', icon: HelpCircle, color: '#f43f5e' },
-  ]
-
-  return (
-    <Section id="chat">
-      <SectionTitle sub="Socratic questioning with rich context injection">AI Chat Architecture</SectionTitle>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Context layers */}
-        <div className="rounded-xl border p-5" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-          <h3 className="text-sm font-semibold mb-4" style={{ color: '#e8e8f0' }}>
-            Context Injection Layers
-          </h3>
-          <p className="text-xs mb-4 leading-relaxed" style={{ color: '#5a5a72' }}>
-            Every message to the AI includes these context layers in the system prompt,
-            giving it awareness of your entire knowledge base:
-          </p>
-          <div className="flex flex-col gap-2">
-            {contextLayers.map((layer, i) => {
-              const Icon = layer.icon
-              return (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2"
-                  style={{ background: `${layer.color}08`, border: `1px solid ${layer.color}15` }}
-                >
-                  <Icon size={14} style={{ color: layer.color, flexShrink: 0 }} />
-                  <div>
-                    <span className="text-xs font-medium" style={{ color: layer.color }}>{layer.label}</span>
-                    <span className="text-xs ml-2" style={{ color: '#5a5a72' }}>{layer.desc}</span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Chat behaviors */}
-        <div className="rounded-xl border p-5" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-          <h3 className="text-sm font-semibold mb-4" style={{ color: '#e8e8f0' }}>
-            Intelligent Behaviors
-          </h3>
-          <div className="flex flex-col gap-3">
-            {behaviors.map((b, i) => {
-              const Icon = b.icon
-              return (
-                <div key={i} className="flex items-start gap-3">
-                  <div
-                    className="flex items-center justify-center rounded-lg flex-shrink-0"
-                    style={{ width: 28, height: 28, background: `${b.color}15` }}
-                  >
-                    <Icon size={14} style={{ color: b.color }} />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium" style={{ color: '#e8e8f0' }}>{b.name}</h4>
-                    <p className="text-xs mt-0.5" style={{ color: '#5a5a72' }}>{b.desc}</p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Decay formula */}
-          <div
-            className="mt-4 rounded-lg px-4 py-3"
-            style={{ background: '#0c0c0d', border: '1px solid #2e2e35' }}
-          >
-            <p className="text-xs font-medium mb-1" style={{ color: '#9090a8' }}>Time-Decay Relevance</p>
-            <code
-              className="text-sm"
-              style={{ fontFamily: "'JetBrains Mono', monospace", color: '#14b8a6' }}
-            >
-              score = (1 + connections) × e<sup>−0.05 × days</sup>
-            </code>
-            <p className="text-xs mt-2" style={{ color: '#5a5a72' }}>
-              Half-life ~14 days. Notes with more graph connections decay slower.
-              Recent, well-connected notes surface first in chat context.
-            </p>
-          </div>
-        </div>
-      </div>
-    </Section>
-  )
-}
-
-// ─── STATE MANAGEMENT ────────────────────────────────────────────────────────
-
-function StateManagement() {
-  const stores = [
-    { name: 'notesStore', key: 'midwicket-notes', desc: 'All notes + triggers agent analysis', color: '#8b5cf6', persisted: true },
-    { name: 'graphStore', key: 'midwicket-graph', desc: 'Knowledge graph nodes, edges, positions', color: '#14b8a6', persisted: true },
-    { name: 'remindersStore', key: 'midwicket-reminders', desc: 'Tasks, events, deadlines', color: '#f43f5e', persisted: true },
-    { name: 'tensionsStore', key: 'midwicket-tensions', desc: 'Detected contradictions', color: '#f59e0b', persisted: true },
-    { name: 'sieveStore', key: 'midwicket-sieve', desc: 'Brain dump results', color: '#8b5cf6', persisted: true },
-    { name: 'threadStore', key: 'midwicket-threads', desc: 'Chat threads + forked ideas', color: '#14b8a6', persisted: true },
-    { name: 'chatStore', key: '—', desc: 'Chat messages (session-only)', color: '#9090a8', persisted: false },
-    { name: 'uiStore', key: '—', desc: 'View state, sidebar, active note', color: '#9090a8', persisted: false },
-  ]
-
-  return (
-    <Section id="state">
-      <SectionTitle sub="Zustand v5 with persist middleware — all data in localStorage">State Management</SectionTitle>
-      <div className="rounded-xl border overflow-hidden" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-        {/* Header */}
-        <div className="grid grid-cols-4 gap-4 px-5 py-3 text-xs font-medium" style={{ color: '#5a5a72', borderBottom: '1px solid #2e2e35' }}>
-          <span>Store</span>
-          <span>localStorage Key</span>
-          <span>Purpose</span>
-          <span>Persisted</span>
-        </div>
-        {stores.map((s, i) => (
-          <div
-            key={i}
-            className="grid grid-cols-4 gap-4 px-5 py-2.5 text-xs items-center"
-            style={{ borderBottom: i < stores.length - 1 ? '1px solid #1a1a1d' : 'none' }}
-          >
-            <span className="font-mono font-medium" style={{ color: s.color }}>{s.name}</span>
-            <span className="font-mono" style={{ color: '#5a5a72' }}>{s.key}</span>
-            <span style={{ color: '#9090a8' }}>{s.desc}</span>
-            <span>
-              {s.persisted ? (
-                <span className="text-xs rounded px-1.5 py-0.5" style={{ background: 'rgba(20,184,166,0.1)', color: '#14b8a6' }}>yes</span>
-              ) : (
-                <span className="text-xs rounded px-1.5 py-0.5" style={{ background: 'rgba(90,90,114,0.1)', color: '#5a5a72' }}>session</span>
-              )}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div
-        className="mt-4 rounded-xl border px-5 py-4 flex items-start gap-3"
-        style={{ background: 'rgba(139,92,246,0.06)', borderColor: 'rgba(139,92,246,0.15)' }}
-      >
-        <Database size={16} style={{ color: '#8b5cf6', flexShrink: 0, marginTop: 2 }} />
-        <div>
-          <p className="text-sm font-medium" style={{ color: '#8b5cf6' }}>Local-First Architecture</p>
-          <p className="text-xs mt-1 leading-relaxed" style={{ color: '#5a5a72' }}>
-            All data lives in the browser. No backend, no account, no sync — your thoughts stay on your machine.
-            Agents use <code style={{ fontFamily: "'JetBrains Mono'", color: '#14b8a6' }}>useStore.getState()</code> outside
-            React and dynamic <code style={{ fontFamily: "'JetBrains Mono'", color: '#14b8a6' }}>import()</code> to avoid circular dependencies.
-          </p>
-        </div>
-      </div>
-    </Section>
-  )
-}
-
-// ─── TECH STACK ──────────────────────────────────────────────────────────────
-
-function TechStack() {
-  const stack = [
-    { name: 'React 19', desc: 'UI framework', color: '#8b5cf6' },
-    { name: 'Vite 7', desc: 'Build tool', color: '#f59e0b' },
-    { name: 'TypeScript', desc: 'Type safety', color: '#14b8a6' },
-    { name: 'Tailwind CSS v4', desc: 'Utility-first styling', color: '#8b5cf6' },
-    { name: 'Zustand v5', desc: 'State management', color: '#f59e0b' },
-    { name: 'TipTap v3', desc: 'Rich text editor', color: '#14b8a6' },
-    { name: 'React Flow 11', desc: 'Graph visualization', color: '#8b5cf6' },
-    { name: 'd3-force', desc: 'Physics simulation', color: '#f59e0b' },
-    { name: 'Anthropic SDK', desc: 'AI integration', color: '#14b8a6' },
-    { name: 'Lucide React', desc: 'Icon system', color: '#8b5cf6' },
-  ]
-
-  return (
-    <Section id="tech">
-      <SectionTitle sub="Carefully chosen for capture speed and semantic intelligence">Tech Stack</SectionTitle>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {stack.map((s, i) => (
-          <div
-            key={i}
-            className="rounded-xl border px-4 py-3 text-center"
-            style={{ background: '#131315', borderColor: '#2e2e35' }}
-          >
-            <p className="text-sm font-semibold" style={{ color: s.color }}>{s.name}</p>
-            <p className="text-xs mt-0.5" style={{ color: '#5a5a72' }}>{s.desc}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* AI Models */}
-      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="rounded-xl border px-5 py-4" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-          <div className="flex items-center gap-2 mb-2">
-            <Bot size={16} style={{ color: '#14b8a6' }} />
-            <span className="text-sm font-semibold" style={{ color: '#e8e8f0' }}>Chat Model</span>
-          </div>
-          <code className="text-sm font-mono" style={{ color: '#14b8a6' }}>claude-sonnet-4-6</code>
-          <p className="text-xs mt-1" style={{ color: '#5a5a72' }}>Streaming, conversational AI for the Thinking Partner</p>
-        </div>
-        <div className="rounded-xl border px-5 py-4" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-          <div className="flex items-center gap-2 mb-2">
-            <Cpu size={16} style={{ color: '#8b5cf6' }} />
-            <span className="text-sm font-semibold" style={{ color: '#e8e8f0' }}>Agent Model</span>
-          </div>
-          <code className="text-sm font-mono" style={{ color: '#8b5cf6' }}>claude-haiku-4-5</code>
-          <p className="text-xs mt-1" style={{ color: '#5a5a72' }}>Tool-use, non-streaming — optimized for speed and cost</p>
-        </div>
-      </div>
-    </Section>
-  )
-}
-
-// ─── DESIGN SYSTEM ───────────────────────────────────────────────────────────
-
-function DesignSystemSection() {
-  const surfaces = [
-    { name: 'Surface 0', value: '#0c0c0d', desc: 'Page background' },
-    { name: 'Surface 1', value: '#131315', desc: 'Panels, headers' },
-    { name: 'Surface 2', value: '#1a1a1d', desc: 'Cards, editors' },
-    { name: 'Surface 3', value: '#222226', desc: 'Hover states' },
-    { name: 'Surface 4', value: '#2a2a2f', desc: 'Emphasis' },
-  ]
-
-  const accents = [
-    { name: 'Purple', value: '#8b5cf6', desc: 'Primary accent' },
-    { name: 'Teal', value: '#14b8a6', desc: 'Secondary, entities' },
-    { name: 'Amber', value: '#f59e0b', desc: 'Warning, tertiary' },
-    { name: 'Rose', value: '#f43f5e', desc: 'Error, destructive' },
-  ]
-
-  const text = [
-    { name: 'Primary', value: '#e8e8f0', desc: 'Main content' },
-    { name: 'Secondary', value: '#9090a8', desc: 'Less emphasis' },
-    { name: 'Muted', value: '#5a5a72', desc: 'Very low emphasis' },
-  ]
-
-  return (
-    <Section id="design">
-      <SectionTitle sub="Dark-first design language with semantic color coding">Design System</SectionTitle>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Surfaces */}
-        <div className="rounded-xl border p-5" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-          <div className="flex items-center gap-2 mb-4">
-            <Palette size={16} style={{ color: '#8b5cf6' }} />
-            <h3 className="text-sm font-semibold" style={{ color: '#e8e8f0' }}>Surfaces</h3>
-          </div>
-          <div className="flex flex-col gap-2">
-            {surfaces.map(s => (
-              <div key={s.name} className="flex items-center gap-3">
-                <div
-                  className="rounded flex-shrink-0"
-                  style={{ width: 32, height: 20, background: s.value, border: '1px solid #2e2e35' }}
-                />
-                <div>
-                  <span className="text-xs font-mono" style={{ color: '#e8e8f0' }}>{s.value}</span>
-                  <span className="text-xs ml-2" style={{ color: '#5a5a72' }}>{s.desc}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Accents */}
-        <div className="rounded-xl border p-5" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-          <div className="flex items-center gap-2 mb-4">
-            <Sparkles size={16} style={{ color: '#14b8a6' }} />
-            <h3 className="text-sm font-semibold" style={{ color: '#e8e8f0' }}>Accents</h3>
-          </div>
-          <div className="flex flex-col gap-3">
-            {accents.map(a => (
-              <div key={a.name} className="flex items-center gap-3">
-                <div
-                  className="rounded-full flex-shrink-0"
-                  style={{ width: 20, height: 20, background: a.value, boxShadow: `0 0 10px ${a.value}40` }}
-                />
-                <div>
-                  <span className="text-xs font-medium" style={{ color: a.value }}>{a.name}</span>
-                  <span className="text-xs ml-2 font-mono" style={{ color: '#5a5a72' }}>{a.value}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Typography */}
-        <div className="rounded-xl border p-5" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-          <div className="flex items-center gap-2 mb-4">
-            <Type size={16} style={{ color: '#f59e0b' }} />
-            <h3 className="text-sm font-semibold" style={{ color: '#e8e8f0' }}>Typography</h3>
-          </div>
-
-          <div className="mb-4">
-            <p className="text-xs mb-1" style={{ color: '#5a5a72' }}>UI Font</p>
-            <p className="text-lg font-semibold" style={{ fontFamily: "'Inter', sans-serif", color: '#e8e8f0' }}>
-              Inter
-            </p>
-            <p className="text-xs" style={{ color: '#9090a8' }}>300 · 400 · 500 · 600 · 700</p>
-          </div>
-
-          <div className="mb-4">
-            <p className="text-xs mb-1" style={{ color: '#5a5a72' }}>Code Font</p>
-            <p className="text-lg font-medium" style={{ fontFamily: "'JetBrains Mono', monospace", color: '#14b8a6' }}>
-              JetBrains Mono
-            </p>
-            <p className="text-xs" style={{ color: '#9090a8' }}>400 · 500</p>
-          </div>
-
-          <div>
-            <p className="text-xs mb-2" style={{ color: '#5a5a72' }}>Text Hierarchy</p>
-            {text.map(t => (
-              <p key={t.name} className="text-sm mb-1" style={{ color: t.value }}>
-                {t.name} <span className="font-mono text-xs">({t.value})</span>
-              </p>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Component patterns */}
-      <div className="mt-4 rounded-xl border p-5" style={{ background: '#131315', borderColor: '#2e2e35' }}>
-        <h3 className="text-sm font-semibold mb-4" style={{ color: '#e8e8f0' }}>Component Patterns</h3>
-        <div className="flex flex-wrap gap-3 items-center">
-          {/* Badge */}
-          <span className="text-xs rounded-full px-2 py-0.5 font-medium" style={{ background: 'rgba(139,92,246,0.2)', color: '#8b5cf6' }}>Badge</span>
-          <span className="text-xs rounded-full px-2 py-0.5 font-medium" style={{ background: 'rgba(20,184,166,0.15)', color: '#14b8a6' }}>Entity</span>
-          <span className="text-xs rounded-full px-2 py-0.5 font-medium" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>Warning</span>
-          <span className="text-xs rounded-full px-2 py-0.5 font-medium" style={{ background: 'rgba(244,63,94,0.15)', color: '#f43f5e' }}>Alert</span>
-
-          {/* Status dots */}
-          <div className="flex items-center gap-1.5 ml-4">
-            <div className="rounded-full" style={{ width: 8, height: 8, background: '#14b8a6', boxShadow: '0 0 6px rgba(20,184,166,0.5)' }} />
-            <span className="text-xs" style={{ color: '#9090a8' }}>Active</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="rounded-full" style={{ width: 8, height: 8, background: '#f59e0b', boxShadow: '0 0 6px rgba(245,158,11,0.5)' }} />
-            <span className="text-xs" style={{ color: '#9090a8' }}>Planning</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="rounded-full" style={{ width: 8, height: 8, background: '#5a5a72' }} />
-            <span className="text-xs" style={{ color: '#9090a8' }}>Completed</span>
-          </div>
-
-          {/* Tag pill */}
-          <span
-            className="ml-4 text-xs rounded-full px-2 py-0.5"
-            style={{ background: '#1a1a1d', color: '#9090a8', border: '1px solid #2e2e35' }}
-          >
-            #tag-pill
-          </span>
-
-          {/* Code inline */}
-          <code
-            className="text-xs rounded px-1.5 py-0.5"
-            style={{ fontFamily: "'JetBrains Mono'", background: '#1a1a1d', color: '#14b8a6', border: '1px solid #2e2e35' }}
-          >
-            inline code
-          </code>
-        </div>
-      </div>
-    </Section>
-  )
-}
-
-// ─── SIEVE SECTION ───────────────────────────────────────────────────────────
-
-function SieveSection() {
-  const buckets = [
-    { name: 'Actionable Next Steps', icon: Zap, color: '#8b5cf6', example: '"Schedule call with Sarah about Q3 numbers"' },
-    { name: 'Incubating Ideas', icon: Lightbulb, color: '#f59e0b', example: '"What if we used webhooks for real-time sync?"' },
-    { name: 'Open Questions', icon: HelpCircle, color: '#14b8a6', example: '"Do we need SOC 2 before the enterprise launch?"' },
-    { name: 'Emotional Offload', icon: Heart, color: '#f43f5e', example: '"Frustrated that the timeline keeps shifting"' },
-  ]
-
-  return (
-    <Section id="sieve">
-      <SectionTitle sub="Stream-of-consciousness → structured clarity">Cognitive Sieve</SectionTitle>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-        {buckets.map((b, i) => {
-          const Icon = b.icon
-          return (
-            <div
-              key={i}
-              className="rounded-xl border p-4"
-              style={{ background: `${b.color}08`, borderColor: `${b.color}20` }}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <Icon size={16} style={{ color: b.color }} />
-                <span className="text-xs font-semibold" style={{ color: b.color }}>{b.name}</span>
-              </div>
-              <p className="text-xs italic leading-relaxed" style={{ color: '#5a5a72' }}>{b.example}</p>
-            </div>
-          )
-        })}
-      </div>
-      <div className="mt-3 text-xs text-center" style={{ color: '#3d3d47' }}>
-        Every item can be converted to a full note with one click. Emotional offload is acknowledged, not dismissed.
-      </div>
-    </Section>
-  )
-}
-
-// ─── FOOTER ──────────────────────────────────────────────────────────────────
-
-function Footer() {
-  return (
-    <div className="text-center py-16 px-6">
-      <div
-        className="mx-auto mb-6"
-        style={{ width: 40, height: 1, background: 'linear-gradient(90deg, #8b5cf6, #14b8a6)' }}
-      />
-      <p className="text-sm font-medium mb-2" style={{ color: '#9090a8' }}>
-        Process, don't manage. Mirror, don't direct.
-      </p>
-      <p className="text-xs" style={{ color: '#3d3d47' }}>
-        Built with the Midwicket philosophy: preserve cognitive ownership.
-      </p>
-      <a
-        href="/"
-        className="inline-flex items-center gap-2 mt-6 rounded-xl px-5 py-2.5 text-sm font-medium transition-all"
-        style={{ background: 'rgba(139,92,246,0.15)', color: '#8b5cf6', border: '1px solid rgba(139,92,246,0.2)' }}
-      >
-        <Brain size={16} /> Open Midwicket
-      </a>
-    </div>
-  )
-}
-
-// ─── NAV ─────────────────────────────────────────────────────────────────────
+const NAV_SECTIONS = ['features', 'flow', 'agents', 'graph', 'chat', 'stack']
 
 function Nav() {
-  const links = [
-    { label: 'Features', href: '#features' },
-    { label: 'Data Flow', href: '#dataflow' },
-    { label: 'Agents', href: '#agents' },
-    { label: 'Graph', href: '#graph' },
-    { label: 'Chat', href: '#chat' },
-    { label: 'State', href: '#state' },
-    { label: 'Tech', href: '#tech' },
-    { label: 'Design', href: '#design' },
-  ]
+  const active = useActiveSection(NAV_SECTIONS)
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    const fn = () => setScrolled(window.scrollY > 20)
+    window.addEventListener('scroll', fn, { passive: true })
+    return () => window.removeEventListener('scroll', fn)
+  }, [])
+
+  const labels: Record<string, string> = {
+    features: 'Features',
+    flow: 'How It Works',
+    agents: 'Agents',
+    graph: 'Graph',
+    chat: 'AI Chat',
+    stack: 'Stack',
+  }
 
   return (
     <nav
-      className="sticky top-0 z-50 flex items-center justify-between px-6 py-3 border-b backdrop-blur-md"
-      style={{ background: 'rgba(12,12,13,0.85)', borderColor: '#2e2e35' }}
+      className="fixed top-0 inset-x-0 z-50 transition-all duration-300"
+      style={{
+        background: scrolled ? 'rgba(12,12,13,0.7)' : 'transparent',
+        backdropFilter: scrolled ? 'blur(20px) saturate(1.4)' : 'none',
+        WebkitBackdropFilter: scrolled ? 'blur(20px) saturate(1.4)' : 'none',
+        borderBottom: scrolled ? '1px solid rgba(255,255,255,0.04)' : '1px solid transparent',
+      }}
     >
-      <a href="/" className="flex items-center gap-2">
-        <div
-          className="flex items-center justify-center rounded-lg"
-          style={{ width: 28, height: 28, background: 'linear-gradient(135deg, #8b5cf6, #14b8a6)' }}
-        >
-          <Brain size={14} color="white" />
+      <div className="max-w-[1200px] mx-auto flex items-center justify-between h-14 px-6">
+        <a href="/" className="flex items-center gap-2.5 group">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-gradient-to-br from-[#8b5cf6] to-[#14b8a6] transition-transform group-hover:scale-110">
+            <Brain size={14} color="white" strokeWidth={2} />
+          </div>
+          <span className="text-[13px] font-semibold text-white/90">Midwicket</span>
+        </a>
+
+        <div className="hidden md:flex items-center gap-1">
+          {NAV_SECTIONS.map(id => (
+            <a
+              key={id}
+              href={`#${id}`}
+              className="px-3 py-1.5 rounded-lg text-[12px] font-medium transition-all duration-200"
+              style={{
+                color: active === id ? '#fff' : 'rgba(255,255,255,0.35)',
+                background: active === id ? 'rgba(255,255,255,0.06)' : 'transparent',
+              }}
+            >
+              {labels[id]}
+            </a>
+          ))}
         </div>
-        <span className="text-sm font-semibold" style={{ color: '#e8e8f0' }}>Midwicket</span>
-      </a>
-      <div className="hidden md:flex items-center gap-1">
-        {links.map(l => (
-          <a
-            key={l.href}
-            href={l.href}
-            className="rounded-lg px-2.5 py-1.5 text-xs transition-colors"
-            style={{ color: '#5a5a72' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#e8e8f0'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#5a5a72'; (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
-            {l.label}
-          </a>
-        ))}
+
+        <a
+          href="/"
+          className="text-[12px] font-medium text-white/70 hover:text-white flex items-center gap-1 transition-colors"
+        >
+          Open App <ArrowUpRight size={11} />
+        </a>
       </div>
     </nav>
   )
 }
 
-// ─── MAIN PAGE ───────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   HERO — full screen, cinematic, minimal
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function Hero() {
+  return (
+    <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden">
+      {/* Mesh gradient blobs */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="hero-blob hero-blob-1" />
+        <div className="hero-blob hero-blob-2" />
+        <div className="hero-blob hero-blob-3" />
+        {/* Noise grain */}
+        <div className="absolute inset-0 noise-overlay" />
+      </div>
+
+      <div className="relative z-10 text-center px-6 max-w-3xl">
+        <Reveal>
+          <Badge color="#8b5cf6">Architecture & Design</Badge>
+        </Reveal>
+
+        <Reveal delay={100}>
+          <h1 className="mt-8 text-[clamp(2.8rem,7vw,5.5rem)] font-bold leading-[1.05] tracking-[-0.035em] text-white">
+            Your brain,<br />
+            <span className="hero-gradient-text">extended.</span>
+          </h1>
+        </Reveal>
+
+        <Reveal delay={200}>
+          <p className="mt-6 text-[clamp(1rem,2vw,1.2rem)] leading-relaxed text-white/40 max-w-xl mx-auto">
+            Midwicket captures thoughts, builds a knowledge graph, detects contradictions, and asks you the right questions. Not an assistant — a thinking partner.
+          </p>
+        </Reveal>
+
+        <Reveal delay={300}>
+          <div className="mt-10 flex items-center justify-center gap-3">
+            <a
+              href="/"
+              className="h-10 px-5 rounded-xl text-[13px] font-medium text-white bg-[#8b5cf6] hover:bg-[#7c4deb] inline-flex items-center gap-2 transition-colors"
+            >
+              Open Midwicket <ChevronRight size={13} />
+            </a>
+            <a
+              href="#features"
+              className="h-10 px-5 rounded-xl text-[13px] font-medium text-white/50 hover:text-white/80 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] inline-flex items-center gap-2 transition-all"
+            >
+              Explore
+            </a>
+          </div>
+        </Reveal>
+      </div>
+
+      {/* Scroll cue */}
+      <div className="absolute bottom-8 flex flex-col items-center gap-2 opacity-30">
+        <div className="w-[1px] h-8 bg-gradient-to-b from-transparent to-white/40" />
+      </div>
+    </section>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FEATURES — bento grid with varied sizes
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function Features() {
+  const items = [
+    { icon: Sparkles, title: 'Zero-Friction Capture', desc: 'Every thought flows to one inbox. Auto-titles, hashtags, word counts. Capture now, organize never.', color: '#8b5cf6', size: 'large' as const },
+    { icon: GitFork, title: 'Knowledge Graph', desc: 'Two-pass AI extracts entities and discovers cross-note relationships. Grows smarter with every note.', color: '#14b8a6', size: 'large' as const },
+    { icon: Brain, title: 'Active Intelligence', desc: 'Living project briefs. Contradiction detection. Time-decay relevance.', color: '#f59e0b', size: 'small' as const },
+    { icon: Users, title: 'People & Work', desc: 'Automatic CRM from your notes — roles, orgs, status, blockers.', color: '#14b8a6', size: 'small' as const },
+    { icon: Bell, title: 'Temporal Awareness', desc: 'Tasks and deadlines extracted from natural language, grouped by urgency.', color: '#f43f5e', size: 'small' as const },
+    { icon: Filter, title: 'Cognitive Sieve', desc: 'Brain dump mode — AI sorts chaos into actionable, incubating, questions, emotional.', color: '#8b5cf6', size: 'small' as const },
+    { icon: Bot, title: 'Thinking Partner', desc: 'Socratic AI that asks questions, not answers. Injects your full context — notes, projects, tensions, blockers.', color: '#14b8a6', size: 'large' as const },
+    { icon: MessageSquare, title: 'Thread Intelligence', desc: 'Detects topic switches, saves tangent ideas, restores context. Socratic unblocking when you\'re stuck.', color: '#f59e0b', size: 'large' as const },
+  ]
+
+  return (
+    <section id="features" className="py-32 md:py-40">
+      <div className="max-w-[1200px] mx-auto px-6">
+        <Reveal>
+          <Badge color="#8b5cf6">Features</Badge>
+          <h2 className="mt-4 text-[clamp(1.8rem,4vw,3rem)] font-bold tracking-tight text-white leading-tight">
+            Eight pillars of<br />cognitive offload
+          </h2>
+          <p className="mt-3 text-white/30 text-[15px] max-w-md">
+            Each system works independently and reinforces the others. Together they reduce the distance between thought and structured knowledge.
+          </p>
+        </Reveal>
+
+        <div className="mt-14 grid grid-cols-1 md:grid-cols-4 gap-3">
+          {items.map((item, i) => {
+            const Icon = item.icon
+            const span = item.size === 'large' ? 'md:col-span-2' : 'md:col-span-1'
+            return (
+              <Reveal key={i} delay={i * 60} className={span}>
+                <div className="bento-card group h-full">
+                  <div className="flex items-start gap-4 p-5 md:p-6">
+                    <div
+                      className="w-9 h-9 rounded-[10px] flex items-center justify-center flex-shrink-0 transition-transform duration-300 group-hover:scale-110"
+                      style={{ background: `color-mix(in srgb, ${item.color} 12%, transparent)` }}
+                    >
+                      <Icon size={17} style={{ color: item.color }} strokeWidth={1.8} />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-[14px] font-semibold text-white/90 mb-1">{item.title}</h3>
+                      <p className="text-[13px] leading-relaxed text-white/30">{item.desc}</p>
+                    </div>
+                  </div>
+                </div>
+              </Reveal>
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   HOW IT WORKS — horizontal pipeline
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function HowItWorks() {
+  const steps = [
+    {
+      num: '01',
+      title: 'Capture',
+      desc: 'Write or paste any thought. No formatting, no folders, no friction.',
+      detail: 'Auto-generated titles, hashtag extraction, word counts. Every note lands in a single inbox.',
+      color: '#8b5cf6',
+    },
+    {
+      num: '02',
+      title: 'Process',
+      desc: 'AI agents analyze in the background — entities, relationships, reminders, contradictions.',
+      detail: 'Two-pass graph extraction, temporal parsing, living project briefs. All in 2-3 seconds.',
+      color: '#14b8a6',
+    },
+    {
+      num: '03',
+      title: 'Think',
+      desc: 'Chat with a Socratic AI that knows your full context and asks the right questions.',
+      detail: 'Time-decay relevance, dependency resolution, thread forking, context restoration.',
+      color: '#f59e0b',
+    },
+  ]
+
+  return (
+    <section id="flow" className="py-32 md:py-40 relative">
+      {/* Subtle bg accent */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] rounded-full opacity-[0.03]"
+          style={{ background: 'radial-gradient(ellipse, #8b5cf6, transparent 70%)' }} />
+      </div>
+
+      <div className="max-w-[1200px] mx-auto px-6 relative">
+        <Reveal>
+          <Badge color="#14b8a6">How It Works</Badge>
+          <h2 className="mt-4 text-[clamp(1.8rem,4vw,3rem)] font-bold tracking-tight text-white leading-tight">
+            Capture → Process → Think
+          </h2>
+          <p className="mt-3 text-white/30 text-[15px] max-w-lg">
+            A note goes from raw thought to structured knowledge in seconds — then powers your AI thinking partner.
+          </p>
+        </Reveal>
+
+        <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-0">
+          {steps.map((step, i) => (
+            <Reveal key={i} delay={i * 120}>
+              <div className="relative md:pr-8">
+                {/* Connector line */}
+                {i < 2 && (
+                  <div className="hidden md:block absolute top-10 right-0 w-8 h-[1px]" style={{ background: `linear-gradient(90deg, ${step.color}30, ${steps[i + 1].color}30)` }} />
+                )}
+
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-[11px] font-mono font-bold tracking-wider" style={{ color: step.color }}>{step.num}</span>
+                  <div className="h-[1px] w-6" style={{ background: step.color, opacity: 0.3 }} />
+                </div>
+
+                <h3 className="text-xl font-bold text-white mb-2">{step.title}</h3>
+                <p className="text-[14px] text-white/40 leading-relaxed mb-3">{step.desc}</p>
+                <p className="text-[12px] text-white/20 leading-relaxed">{step.detail}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DATA PIPELINE — visual architecture
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function Pipeline() {
+  return (
+    <section className="py-20 md:py-28">
+      <div className="max-w-[1200px] mx-auto px-6">
+        <Reveal>
+          <div className="pipeline-card rounded-2xl border border-white/[0.04] p-8 md:p-12 relative overflow-hidden">
+            {/* Subtle gradient bg */}
+            <div className="absolute inset-0 bg-gradient-to-br from-[#8b5cf6]/[0.02] via-transparent to-[#14b8a6]/[0.02]" />
+
+            <div className="relative z-10">
+              <Badge color="#f59e0b">Under The Hood</Badge>
+              <h3 className="mt-4 text-[clamp(1.4rem,3vw,2rem)] font-bold text-white tracking-tight">
+                What happens when you save a note
+              </h3>
+              <p className="mt-2 text-[14px] text-white/30 max-w-lg">
+                A choreographed pipeline of AI agents, graph lookups, and intelligent debouncing.
+              </p>
+
+              {/* Pipeline visualization */}
+              <div className="mt-12 flex flex-col gap-6">
+                {/* Trigger */}
+                <PipelineRow
+                  color="#fff"
+                  label="Note Saved"
+                  right="User writes in QuickCapture or NoteEditor"
+                />
+                <PipelineConnector label="2s debounce" />
+
+                {/* Parallel split */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Graph branch */}
+                  <div className="flex flex-col gap-2">
+                    <PipelineRow color="#8b5cf6" label="Graph Agent" right="Two-pass extraction" />
+                    <PipelineStep color="#8b5cf6" label="extract_entities" desc="People, projects, concepts, orgs with metadata" />
+                    <PipelineStep color="#14b8a6" label="Graph Lookup" desc="Match against existing nodes — FREE, no API call" free />
+                    <PipelineStep color="#f59e0b" label="Context Agent" desc="Living project briefs — fire & forget" />
+                    <PipelineStep color="#8b5cf6" label="extract_relationships" desc="Cross-note links, shared concepts" />
+                    <PipelineStep color="#f43f5e" label="Contradictions" desc="Detects conflicting facts across notes" />
+                  </div>
+
+                  {/* Reminder branch */}
+                  <div className="flex flex-col gap-2">
+                    <PipelineRow color="#f59e0b" label="Reminder Agent" right="Temporal extraction" />
+                    <PipelineStep color="#f59e0b" label="extract_reminders" desc="Tasks, events, deadlines from natural language" />
+                    <PipelineStep color="#f59e0b" label="Date Parsing" desc="Natural language → ISO 8601" />
+                    <PipelineStep color="#f43f5e" label="Priority" desc="High (urgent/today), Medium (week), Low (someday)" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  )
+}
+
+function PipelineRow({ color, label, right }: { color: string; label: string; right: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl px-4 py-3 border border-white/[0.04]" style={{ background: `color-mix(in srgb, ${color} 4%, transparent)` }}>
+      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color, boxShadow: `0 0 8px ${color}60` }} />
+      <span className="text-[13px] font-semibold text-white/80">{label}</span>
+      <span className="text-[12px] text-white/20 ml-auto">{right}</span>
+    </div>
+  )
+}
+
+function PipelineStep({ color, label, desc, free }: { color: string; label: string; desc: string; free?: boolean }) {
+  return (
+    <div className="flex items-start gap-3 pl-7">
+      <div className="w-[3px] h-full rounded-full flex-shrink-0 mt-1" style={{ background: `${color}20`, minHeight: 16 }} />
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] font-mono font-medium" style={{ color }}>{label}</span>
+          {free && <span className="text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded" style={{ background: '#14b8a615', color: '#14b8a6' }}>FREE</span>}
+        </div>
+        <p className="text-[11px] text-white/20 mt-0.5">{desc}</p>
+      </div>
+    </div>
+  )
+}
+
+function PipelineConnector({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 pl-5">
+      <div className="w-[1px] h-5 bg-white/10" />
+      <span className="text-[10px] font-mono text-white/15">{label}</span>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AGENTS — clean cards
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function Agents() {
+  const agents = [
+    {
+      name: 'Graph Agent', icon: GitFork, color: '#8b5cf6',
+      model: 'haiku-4-5', trigger: '2s debounce',
+      desc: 'Two-pass entity & relationship extraction. Uses existing graph as a free retrieval index.',
+      tools: ['extract_entities', 'extract_relationships'],
+    },
+    {
+      name: 'Context Agent', icon: Eye, color: '#f59e0b',
+      model: 'haiku-4-5', trigger: '30s debounce',
+      desc: 'Maintains living briefs for projects and orgs — summary, open questions, blockers.',
+      tools: ['update_project_context'],
+    },
+    {
+      name: 'Reminder Agent', icon: Bell, color: '#f43f5e',
+      model: 'haiku-4-5', trigger: '2s debounce',
+      desc: 'Extracts tasks, events, and deadlines from natural language with priority classification.',
+      tools: ['extract_reminders'],
+    },
+    {
+      name: 'Sieve Agent', icon: Filter, color: '#8b5cf6',
+      model: 'haiku-4-5', trigger: 'Manual',
+      desc: 'Brain dump → sorted buckets. Actionable steps, incubating ideas, questions, emotional offload.',
+      tools: ['parse_brain_dump'],
+    },
+  ]
+
+  return (
+    <section id="agents" className="py-32 md:py-40">
+      <div className="max-w-[1200px] mx-auto px-6">
+        <Reveal>
+          <Badge color="#f59e0b">Agents</Badge>
+          <h2 className="mt-4 text-[clamp(1.8rem,4vw,3rem)] font-bold tracking-tight text-white leading-tight">
+            Four agents,<br />working quietly
+          </h2>
+          <p className="mt-3 text-white/30 text-[15px] max-w-md">
+            Specialized AI agents fire in the background after every note save. You never wait — they just make your knowledge richer.
+          </p>
+        </Reveal>
+
+        <div className="mt-14 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {agents.map((a, i) => {
+            const Icon = a.icon
+            return (
+              <Reveal key={i} delay={i * 80}>
+                <div className="bento-card h-full">
+                  <div className="p-5 md:p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `color-mix(in srgb, ${a.color} 10%, transparent)` }}>
+                          <Icon size={16} style={{ color: a.color }} strokeWidth={1.8} />
+                        </div>
+                        <h3 className="text-[14px] font-semibold text-white/90">{a.name}</h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-white/20">{a.trigger}</span>
+                      </div>
+                    </div>
+
+                    <p className="text-[13px] text-white/30 leading-relaxed mb-4">{a.desc}</p>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/[0.04] text-white/25 border border-white/[0.04]">
+                        {a.model}
+                      </span>
+                      {a.tools.map(t => (
+                        <span key={t} className="text-[10px] font-mono px-2 py-0.5 rounded-md border" style={{
+                          background: `color-mix(in srgb, ${a.color} 5%, transparent)`,
+                          borderColor: `color-mix(in srgb, ${a.color} 12%, transparent)`,
+                          color: `color-mix(in srgb, ${a.color} 60%, white)`,
+                        }}>
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Reveal>
+            )
+          })}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   KNOWLEDGE GRAPH — visual + data
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function Graph() {
+  // Node positions for the abstract graph visual
+  const nodes = [
+    { x: 50, y: 50, r: 5, color: '#8b5cf6', label: 'Note' },
+    { x: 22, y: 32, r: 3.5, color: '#14b8a6', label: 'Person' },
+    { x: 78, y: 28, r: 3.5, color: '#f59e0b', label: 'Project' },
+    { x: 18, y: 68, r: 3, color: '#14b8a6', label: 'Org' },
+    { x: 82, y: 72, r: 3, color: '#f43f5e', label: 'Tech' },
+    { x: 40, y: 80, r: 2.5, color: '#9090a8', label: 'Concept' },
+    { x: 65, y: 18, r: 2.5, color: '#8b5cf6', label: 'Note' },
+    { x: 35, y: 15, r: 2, color: '#f59e0b', label: 'Event' },
+  ]
+
+  const edges = [
+    [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [6, 1], [6, 2], [6, 7], [1, 3], [2, 4],
+  ]
+
+  return (
+    <section id="graph" className="py-32 md:py-40 relative">
+      <div className="max-w-[1200px] mx-auto px-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
+          {/* Left: visualization */}
+          <Reveal>
+            <div className="aspect-square max-w-[480px] mx-auto w-full relative">
+              <div className="absolute inset-0 rounded-3xl overflow-hidden border border-white/[0.04]" style={{ background: 'rgba(255,255,255,0.01)' }}>
+                <svg viewBox="0 0 100 100" className="w-full h-full">
+                  {/* Edges */}
+                  {edges.map(([a, b], i) => (
+                    <line
+                      key={i}
+                      x1={nodes[a].x} y1={nodes[a].y}
+                      x2={nodes[b].x} y2={nodes[b].y}
+                      stroke="white"
+                      strokeOpacity={0.06}
+                      strokeWidth={0.3}
+                    />
+                  ))}
+                  {/* Nodes with glow */}
+                  {nodes.map((n, i) => (
+                    <g key={i}>
+                      <circle cx={n.x} cy={n.y} r={n.r * 3} fill={n.color} opacity={0.04}>
+                        <animate attributeName="opacity" values="0.04;0.08;0.04" dur={`${3 + i * 0.5}s`} repeatCount="indefinite" />
+                      </circle>
+                      <circle cx={n.x} cy={n.y} r={n.r} fill={n.color} opacity={0.7}>
+                        <animate attributeName="r" values={`${n.r};${n.r * 1.15};${n.r}`} dur={`${4 + i * 0.3}s`} repeatCount="indefinite" />
+                      </circle>
+                    </g>
+                  ))}
+                </svg>
+              </div>
+            </div>
+          </Reveal>
+
+          {/* Right: description */}
+          <div>
+            <Reveal>
+              <Badge color="#14b8a6">Knowledge Graph</Badge>
+              <h2 className="mt-4 text-[clamp(1.6rem,3.5vw,2.5rem)] font-bold tracking-tight text-white leading-tight">
+                Your notes become<br />a connected brain
+              </h2>
+              <p className="mt-4 text-[14px] text-white/30 leading-relaxed max-w-md">
+                Every note feeds a growing knowledge graph. Entities are extracted, relationships discovered, and contradictions flagged — automatically.
+              </p>
+            </Reveal>
+
+            <Reveal delay={150}>
+              <div className="mt-8 flex flex-col gap-3">
+                {[
+                  { label: 'Self-reinforcing', desc: 'Graph index lookup finds related notes with zero API cost. More notes = better relationships.', color: '#14b8a6' },
+                  { label: 'Rich metadata', desc: 'Role, organization, status, blockers, stakeholders — all AI-extracted per entity.', color: '#8b5cf6' },
+                  { label: 'Contradiction detection', desc: 'When facts conflict across notes, tensions are stored and surfaced in chat.', color: '#f43f5e' },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className="w-1 rounded-full flex-shrink-0 mt-1.5" style={{ background: item.color, height: 16 }} />
+                    <div>
+                      <span className="text-[13px] font-medium text-white/70">{item.label}</span>
+                      <p className="text-[12px] text-white/25 mt-0.5">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Reveal>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AI CHAT — context layers + behaviors
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function Chat() {
+  return (
+    <section id="chat" className="py-32 md:py-40 relative">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] rounded-full opacity-[0.02]"
+          style={{ background: 'radial-gradient(ellipse, #14b8a6, transparent 70%)' }} />
+      </div>
+
+      <div className="max-w-[1200px] mx-auto px-6 relative">
+        <Reveal>
+          <Badge color="#f43f5e">AI Chat</Badge>
+          <h2 className="mt-4 text-[clamp(1.8rem,4vw,3rem)] font-bold tracking-tight text-white leading-tight">
+            Think out loud,<br />with full context
+          </h2>
+          <p className="mt-3 text-white/30 text-[15px] max-w-lg">
+            A Socratic AI that never prescribes — it mirrors your thinking, asks probing questions, and surfaces connections you missed.
+          </p>
+        </Reveal>
+
+        <div className="mt-14 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Context layers */}
+          <Reveal>
+            <div className="bento-card">
+              <div className="p-5 md:p-6">
+                <p className="text-[11px] font-medium tracking-wide uppercase text-white/25 mb-4">Context injected per message</p>
+                <div className="flex flex-col gap-2">
+                  {[
+                    { num: '1', label: 'Your Notes', desc: 'Top 10 by decay score', color: '#8b5cf6' },
+                    { num: '2', label: 'Project Briefs', desc: 'AI-maintained summaries', color: '#f59e0b' },
+                    { num: '3', label: 'Tensions', desc: 'Contradictions to surface', color: '#f43f5e' },
+                    { num: '4', label: 'Blockers', desc: 'Dependency context', color: '#14b8a6' },
+                    { num: '5', label: 'Threads', desc: 'Conversation history', color: '#9090a8' },
+                  ].map((l, i) => (
+                    <div key={i} className="flex items-center gap-3 rounded-lg px-3 py-2.5" style={{ background: `color-mix(in srgb, ${l.color} 3%, transparent)` }}>
+                      <span className="text-[10px] font-mono font-bold w-5 text-center" style={{ color: l.color }}>{l.num}</span>
+                      <span className="text-[13px] font-medium text-white/60">{l.label}</span>
+                      <span className="text-[11px] text-white/20 ml-auto">{l.desc}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Decay formula */}
+                <div className="mt-4 rounded-lg px-3 py-3 bg-black/20">
+                  <p className="text-[10px] uppercase tracking-wider text-white/15 mb-1">Relevance decay</p>
+                  <code className="text-[13px] font-mono" style={{ color: '#14b8a6' }}>
+                    score = (1 + connections) × e<sup>−0.05 × days</sup>
+                  </code>
+                  <p className="text-[11px] text-white/15 mt-1">Half-life ~14 days. Connected notes persist longer.</p>
+                </div>
+              </div>
+            </div>
+          </Reveal>
+
+          {/* Behaviors */}
+          <Reveal delay={100}>
+            <div className="bento-card">
+              <div className="p-5 md:p-6">
+                <p className="text-[11px] font-medium tracking-wide uppercase text-white/25 mb-4">Intelligent behaviors</p>
+                <div className="flex flex-col gap-5">
+                  {[
+                    { icon: Zap, name: 'Dependency Resolution', desc: 'Detects blockers, surfaces the immediate bottleneck to focus on.', color: '#14b8a6' },
+                    { icon: GitFork, name: 'Thread Forking', desc: 'Tangent ideas are captured as incubating notes, then back to topic.', color: '#f59e0b' },
+                    { icon: Clock, name: 'Context Restoration', desc: '"Where was I?" → 2-sentence ramp-up with your exact next step.', color: '#8b5cf6' },
+                    { icon: HelpCircle, name: 'Socratic Unblocking', desc: '5 Whys, Constraint Forcing, Inversion, Smallest Next Step.', color: '#f43f5e' },
+                  ].map((b, i) => {
+                    const Icon = b.icon
+                    return (
+                      <div key={i} className="flex items-start gap-3">
+                        <Icon size={15} style={{ color: b.color }} strokeWidth={1.8} className="flex-shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="text-[13px] font-medium text-white/70">{b.name}</h4>
+                          <p className="text-[12px] text-white/25 mt-0.5 leading-relaxed">{b.desc}</p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   COGNITIVE SIEVE — four buckets
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function Sieve() {
+  const buckets = [
+    { icon: Zap, name: 'Actionable', color: '#8b5cf6', example: 'Schedule call with Sarah about Q3' },
+    { icon: Lightbulb, name: 'Incubating', color: '#f59e0b', example: 'What if we used webhooks for sync?' },
+    { icon: HelpCircle, name: 'Questions', color: '#14b8a6', example: 'Do we need SOC 2 before launch?' },
+    { icon: Heart, name: 'Emotional', color: '#f43f5e', example: 'Frustrated the timeline keeps shifting' },
+  ]
+
+  return (
+    <section className="py-20 md:py-28">
+      <div className="max-w-[1200px] mx-auto px-6">
+        <Reveal>
+          <div className="bento-card">
+            <div className="p-6 md:p-8">
+              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+                <div className="max-w-sm">
+                  <Badge color="#8b5cf6">Cognitive Sieve</Badge>
+                  <h3 className="mt-3 text-xl font-bold text-white">Brain dump → clarity</h3>
+                  <p className="mt-2 text-[13px] text-white/30 leading-relaxed">
+                    Paste raw stream-of-consciousness. AI sorts every thought into exactly one bucket. One-click convert to notes.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 flex-1 max-w-md">
+                  {buckets.map((b, i) => {
+                    const Icon = b.icon
+                    return (
+                      <div key={i} className="rounded-xl p-3 border border-white/[0.04]" style={{ background: `color-mix(in srgb, ${b.color} 3%, transparent)` }}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Icon size={13} style={{ color: b.color }} strokeWidth={2} />
+                          <span className="text-[11px] font-semibold" style={{ color: b.color }}>{b.name}</span>
+                        </div>
+                        <p className="text-[11px] text-white/20 italic">"{b.example}"</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TECH STACK — clean, minimal
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function Stack() {
+  const tech = [
+    ['React 19', 'Vite 7', 'TypeScript', 'Tailwind v4', 'Zustand v5'],
+    ['TipTap v3', 'React Flow', 'd3-force', 'Anthropic SDK', 'Lucide'],
+  ]
+
+  const models = [
+    { name: 'claude-sonnet-4-6', role: 'Thinking Partner', desc: 'Streaming chat with full context injection', color: '#14b8a6' },
+    { name: 'claude-haiku-4-5', role: 'Background Agents', desc: 'Tool-use extraction — fast, cheap, structured', color: '#8b5cf6' },
+  ]
+
+  const stores = [
+    { name: 'notes', persisted: true }, { name: 'graph', persisted: true },
+    { name: 'reminders', persisted: true }, { name: 'tensions', persisted: true },
+    { name: 'sieve', persisted: true }, { name: 'threads', persisted: true },
+    { name: 'chat', persisted: false }, { name: 'ui', persisted: false },
+  ]
+
+  return (
+    <section id="stack" className="py-32 md:py-40">
+      <div className="max-w-[1200px] mx-auto px-6">
+        <Reveal>
+          <Badge color="#f59e0b">Stack</Badge>
+          <h2 className="mt-4 text-[clamp(1.8rem,4vw,3rem)] font-bold tracking-tight text-white leading-tight">
+            Built for speed
+          </h2>
+          <p className="mt-3 text-white/30 text-[15px] max-w-md">
+            Everything runs in the browser. No backend, no account, no sync. Your thoughts stay on your machine.
+          </p>
+        </Reveal>
+
+        {/* Tech pills */}
+        <Reveal delay={100}>
+          <div className="mt-10 flex flex-col gap-2">
+            {tech.map((row, i) => (
+              <div key={i} className="flex flex-wrap gap-2">
+                {row.map(t => (
+                  <span key={t} className="text-[12px] font-medium text-white/35 bg-white/[0.03] border border-white/[0.04] rounded-lg px-3.5 py-2 hover:text-white/50 hover:border-white/[0.08] transition-all cursor-default">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        </Reveal>
+
+        {/* Models */}
+        <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {models.map((m, i) => (
+            <Reveal key={i} delay={i * 80}>
+              <div className="bento-card">
+                <div className="p-5 md:p-6">
+                  <span className="text-[11px] font-medium text-white/20">{m.role}</span>
+                  <code className="block mt-1 text-[14px] font-mono font-medium" style={{ color: m.color }}>{m.name}</code>
+                  <p className="mt-2 text-[12px] text-white/25">{m.desc}</p>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+
+        {/* State stores */}
+        <Reveal delay={200}>
+          <div className="mt-10">
+            <p className="text-[11px] font-medium tracking-wide uppercase text-white/20 mb-3">Zustand Stores</p>
+            <div className="flex flex-wrap gap-2">
+              {stores.map(s => (
+                <span key={s.name} className="text-[11px] font-mono px-2.5 py-1 rounded-md border border-white/[0.04]" style={{
+                  color: s.persisted ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.15)',
+                  background: s.persisted ? 'rgba(255,255,255,0.02)' : 'transparent',
+                }}>
+                  {s.name}{s.persisted ? '' : ' •'}
+                </span>
+              ))}
+              <span className="text-[10px] text-white/10 self-center ml-1">• = session only</span>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FOOTER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+function Footer() {
+  return (
+    <footer className="py-20 border-t border-white/[0.04]">
+      <div className="max-w-[1200px] mx-auto px-6 text-center">
+        <p className="text-[15px] text-white/40 font-medium">
+          Process, don't manage. Mirror, don't direct.
+        </p>
+        <p className="mt-2 text-[12px] text-white/15">
+          Preserve cognitive ownership.
+        </p>
+        <a
+          href="/"
+          className="inline-flex items-center gap-2 mt-8 text-[13px] font-medium text-white/40 hover:text-white/70 transition-colors"
+        >
+          <Brain size={15} strokeWidth={1.8} /> Open Midwicket <ArrowUpRight size={11} />
+        </a>
+      </div>
+    </footer>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAIN PAGE
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function ArchitecturePage() {
   return (
-    <div style={{ background: '#0c0c0d', minHeight: '100vh' }}>
+    <div className="arch-page bg-[#08080a] min-h-screen">
       <style>{`
-        @keyframes pulse {
-          0% { opacity: 0.7; }
-          100% { opacity: 1; }
+        /* ── Base ── */
+        .arch-page {
+          --grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
         }
         html { scroll-behavior: smooth; }
+        ::selection { background: rgba(139,92,246,0.25); }
+
+        /* ── Noise overlay ── */
+        .noise-overlay {
+          background-image: var(--grain);
+          background-repeat: repeat;
+          background-size: 256px;
+          opacity: 0.5;
+          mix-blend-mode: overlay;
+        }
+
+        /* ── Hero blobs ── */
+        .hero-blob {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(120px);
+        }
+        .hero-blob-1 {
+          width: 500px; height: 500px;
+          background: #8b5cf6;
+          opacity: 0.07;
+          top: 10%; left: 15%;
+          animation: drift 25s ease-in-out infinite alternate;
+        }
+        .hero-blob-2 {
+          width: 400px; height: 400px;
+          background: #14b8a6;
+          opacity: 0.05;
+          bottom: 15%; right: 15%;
+          animation: drift 20s ease-in-out infinite alternate-reverse;
+        }
+        .hero-blob-3 {
+          width: 300px; height: 300px;
+          background: #f59e0b;
+          opacity: 0.03;
+          top: 50%; left: 50%;
+          transform: translate(-50%, -50%);
+          animation: drift 30s ease-in-out infinite alternate;
+        }
+        @keyframes drift {
+          0% { transform: translate(0, 0); }
+          100% { transform: translate(40px, -30px); }
+        }
+
+        /* ── Gradient text ── */
+        .hero-gradient-text {
+          background: linear-gradient(135deg, #8b5cf6, #14b8a6, #f59e0b);
+          background-size: 200% 200%;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          animation: gradient-shift 5s ease-in-out infinite alternate;
+        }
+        @keyframes gradient-shift {
+          0% { background-position: 0% 50%; }
+          100% { background-position: 100% 50%; }
+        }
+
+        /* ── Reveal animation ── */
+        .reveal-up {
+          opacity: 0;
+          transform: translateY(20px);
+          transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                      transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .reveal-up.revealed {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
+        /* ── Bento cards ── */
+        .bento-card {
+          background: rgba(255,255,255,0.02);
+          border: 1px solid rgba(255,255,255,0.04);
+          border-radius: 16px;
+          transition: border-color 0.3s ease, background 0.3s ease;
+        }
+        .bento-card:hover {
+          border-color: rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.03);
+        }
+
+        /* ── Pipeline card ── */
+        .pipeline-card {
+          background: rgba(255,255,255,0.015);
+        }
       `}</style>
 
       <Nav />
       <Hero />
-
-      <div className="max-w-5xl mx-auto px-6">
-        <FeatureGrid />
-        <Divider />
-        <DataFlow />
-        <Divider />
-        <AgentCards />
-        <Divider />
-        <GraphSection />
-        <Divider />
-        <SieveSection />
-        <Divider />
-        <ChatArchitecture />
-        <Divider />
-        <StateManagement />
-        <Divider />
-        <TechStack />
-        <Divider />
-        <DesignSystemSection />
-      </div>
-
+      <Features />
+      <HowItWorks />
+      <Pipeline />
+      <Agents />
+      <Graph />
+      <Chat />
+      <Sieve />
+      <Stack />
       <Footer />
     </div>
   )
