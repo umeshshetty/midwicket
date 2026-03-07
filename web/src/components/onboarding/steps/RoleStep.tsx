@@ -52,6 +52,7 @@ export default function RoleStep({ role: initRole, organization: initOrg, indust
             type="text"
             value={role}
             onChange={e => setRole(e.target.value)}
+            maxLength={100}
             placeholder="e.g. Product Manager, Engineer, Founder"
             autoFocus
             className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none"
@@ -67,6 +68,7 @@ export default function RoleStep({ role: initRole, organization: initOrg, indust
             type="text"
             value={organization}
             onChange={e => setOrganization(e.target.value)}
+            maxLength={100}
             placeholder="e.g. Anthropic, freelance, Stanford"
             className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none"
             style={inputStyle}
@@ -81,6 +83,7 @@ export default function RoleStep({ role: initRole, organization: initOrg, indust
             type="text"
             value={industry}
             onChange={e => setIndustry(e.target.value)}
+            maxLength={100}
             placeholder="e.g. Technology, Healthcare"
             className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none"
             style={inputStyle}

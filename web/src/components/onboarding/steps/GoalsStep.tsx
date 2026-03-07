@@ -98,6 +98,7 @@ export default function GoalsStep({ goals: initGoals, customGoal: initCustom, on
           type="text"
           value={customGoal}
           onChange={e => setCustomGoal(e.target.value)}
+          maxLength={200}
           placeholder="e.g. Prepare for board meetings, Write my book…"
           className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none"
           style={{ background: '#1a1a1d', color: '#e8e8f0', border: '1px solid #2e2e35', caretColor: '#8b5cf6' }}

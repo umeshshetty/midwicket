@@ -19,6 +19,7 @@ import SieveView from './components/sieve/SieveView'
 export default function App() {
   const { view, isChatOpen, isProfileOpen, closeProfile, setSearchQuery } = useUIStore()
   const isOnboarded = useUserStore(s => s.isOnboarded())
+  const hasHydrated = useUserStore(s => s._hasHydrated)
 
   // Global keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -33,6 +34,11 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
+
+  // Wait for localStorage hydration before deciding onboarding state
+  if (!hasHydrated) {
+    return null
+  }
 
   if (!isOnboarded) {
     return <OnboardingFlow />

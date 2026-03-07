@@ -90,6 +90,7 @@ export default function FocusStep({ focusAreas: initial, onNext, onBack, onSkip 
           type="text"
           value={custom}
           onChange={e => setCustom(e.target.value)}
+          maxLength={50}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }}
           placeholder="Add your own…"
           className="flex-1 rounded-xl px-4 py-2.5 text-sm focus:outline-none"

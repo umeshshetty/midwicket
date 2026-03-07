@@ -44,6 +44,7 @@ export default function WelcomeStep({ name: initial, onNext }: Props) {
           type="text"
           value={name}
           onChange={e => setName(e.target.value)}
+          maxLength={50}
           placeholder="Your first name"
           autoFocus
           className="w-full rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors"
