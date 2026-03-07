@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Midwicket</string>
+    <string name="title_activity_main">Midwicket</string>
+    <string name="package_name">com.midwicket.app</string>
+    <string name="custom_url_scheme">com.midwicket.app</string>
+</resources>
