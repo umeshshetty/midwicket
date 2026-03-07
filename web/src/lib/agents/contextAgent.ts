@@ -18,8 +18,20 @@ const client = new Anthropic({
 })
 
 // Per-entity debounce: skip if same entity was updated < 30s ago
+// Bounded to prevent unbounded memory growth — evict oldest entries when over limit
+const MAX_DEBOUNCE_ENTRIES = 500
 const lastRunMap = new Map<string, number>()
 const DEBOUNCE_MS = 30_000
+
+function _pruneDebounceMap(): void {
+  if (lastRunMap.size <= MAX_DEBOUNCE_ENTRIES) return
+  // Evict oldest 20% of entries
+  const entries = [...lastRunMap.entries()].sort((a, b) => a[1] - b[1])
+  const toRemove = Math.floor(entries.length * 0.2)
+  for (let i = 0; i < toRemove; i++) {
+    lastRunMap.delete(entries[i][0])
+  }
+}
 
 const CONTEXT_TOOLS: Anthropic.Tool[] = [
   {
@@ -76,15 +88,17 @@ export async function analyzeEntityContext(
   const lastRun = lastRunMap.get(entityId) ?? 0
   if (Date.now() - lastRun < DEBOUNCE_MS) return
   lastRunMap.set(entityId, Date.now())
+  _pruneDebounceMap()
 
   try {
     // Get entity's current metadata
     const entityNode = graphStore.getNodeById(entityId)
     const currentSummary = entityNode?.metadata?.summary
+    const entityNoteIds = entityNode?.noteIds ?? []
 
     // Get last 3 notes mentioning this entity (excluding the triggering note)
     const relatedNotes = allNotes
-      .filter(n => n.id !== noteId && entityNode?.noteIds.includes(n.id))
+      .filter(n => n.id !== noteId && entityNoteIds.includes(n.id))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .slice(0, 3)
 

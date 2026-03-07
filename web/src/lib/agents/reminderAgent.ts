@@ -123,12 +123,22 @@ Text: ${note.plainText}`,
     // Replace any prior reminders for this note (handles edits)
     remindersStore.deleteRemindersForNote(note.id)
 
+    const VALID_TYPES = new Set(['task', 'event', 'deadline', 'reminder'])
+    const VALID_PRIORITIES = new Set(['high', 'medium', 'low'])
+
     for (const r of reminders) {
-      // Validate parsed_date is a plausible ISO date before storing
-      const validDate =
-        r.parsed_date && /^\d{4}-\d{2}-\d{2}$/.test(r.parsed_date)
-          ? r.parsed_date
-          : undefined
+      // Validate parsed_date is a plausible ISO date (format AND validity)
+      let validDate: string | undefined
+      if (r.parsed_date && /^\d{4}-\d{2}-\d{2}$/.test(r.parsed_date)) {
+        const d = new Date(r.parsed_date + 'T00:00:00')
+        if (!isNaN(d.getTime())) {
+          validDate = r.parsed_date
+        }
+      }
+
+      // Validate enum values, fallback to safe defaults
+      const type = VALID_TYPES.has(r.type) ? r.type as 'task' | 'event' | 'deadline' | 'reminder' : 'reminder'
+      const priority = VALID_PRIORITIES.has(r.priority) ? r.priority as 'high' | 'medium' | 'low' : 'medium'
 
       remindersStore.addReminder({
         noteId: note.id,
@@ -137,8 +147,8 @@ Text: ${note.plainText}`,
         person: r.person,
         dateText: r.date_text,
         parsedDate: validDate,
-        type: r.type as 'task' | 'event' | 'deadline' | 'reminder',
-        priority: r.priority as 'high' | 'medium' | 'low',
+        type,
+        priority,
       })
     }
   } catch (err) {

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { v4 as uuidv4 } from 'uuid'
 import type { Note } from '../types'
-import { enqueueNoteAnalysis, cancelAnalysis } from '../lib/agents/agentQueue'
+import { enqueueNoteAnalysis, cancelAnalysis, isAnalysisCancelled } from '../lib/agents/agentQueue'
 
 interface NotesStore {
   notes: Note[]
@@ -49,6 +49,10 @@ export const useNotesStore = create<NotesStore>()(
         }
         set(state => ({ notes: [note, ...state.notes] }))
         scheduleAgentAnalysis(note.id)
+        // Sync to backend for semantic search (fire-and-forget, retries internally)
+        import('../lib/backend').then(m => m.syncNote(note)).catch(err => {
+          console.warn('[NotesStore] Backend sync import failed:', err)
+        })
         return note
       },
 
@@ -68,17 +72,32 @@ export const useNotesStore = create<NotesStore>()(
         // Only re-analyze when content actually changed
         if (updates.plainText !== undefined || updates.content !== undefined) {
           scheduleAgentAnalysis(id)
+          // Sync updated note to backend (fire-and-forget, retries internally)
+          const updated = get().notes.find(n => n.id === id)
+          if (updated) {
+            import('../lib/backend').then(m => m.syncNote(updated)).catch(err => {
+              console.warn('[NotesStore] Backend sync import failed:', err)
+            })
+          }
         }
       },
 
       deleteNote: (id) => {
         cancelAnalysis(id)
         set(state => ({ notes: state.notes.filter(n => n.id !== id) }))
-        // Clean up graph + reminders asynchronously
-        Promise.all([
+        // Clean up graph + reminders + backend index asynchronously
+        Promise.allSettled([
           import('./graphStore').then(m => m.useGraphStore.getState().removeNoteFromGraph(id)),
           import('./remindersStore').then(m => m.useRemindersStore.getState().deleteRemindersForNote(id)),
-        ]).catch(() => {})
+          import('../lib/backend').then(m => m.deleteNoteFromBackend(id)),
+        ]).then(results => {
+          const labels = ['graphStore', 'remindersStore', 'backend']
+          results.forEach((r, i) => {
+            if (r.status === 'rejected') {
+              console.warn(`[NotesStore] Cleanup failed (${labels[i]}):`, r.reason)
+            }
+          })
+        })
       },
 
       togglePin: (id) => {
@@ -116,6 +135,9 @@ export const useNotesStore = create<NotesStore>()(
 function scheduleAgentAnalysis(noteId: string): void {
   enqueueNoteAnalysis(noteId, async (id) => {
     try {
+      // Bail out early if note was deleted during debounce
+      if (isAnalysisCancelled(id)) return
+
       const [{ analyzeNoteForGraph }, { analyzeNoteForReminders }] = await Promise.all([
         import('../lib/agents/graphAgent'),
         import('../lib/agents/reminderAgent'),
@@ -124,6 +146,9 @@ function scheduleAgentAnalysis(noteId: string): void {
         import('./graphStore'),
         import('./remindersStore'),
       ])
+
+      // Re-check after async imports — note may have been deleted
+      if (isAnalysisCancelled(id)) return
 
       const { notes } = useNotesStore.getState()
       const note = notes.find(n => n.id === id)

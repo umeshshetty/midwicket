@@ -123,7 +123,10 @@ export default function NoteEditor() {
         style: 'min-height: 100%; padding: 1.5rem; font-size: 0.9375rem; line-height: 1.75; color: #e8e8f0;',
       },
     },
-    content: note?.content ? JSON.parse(note.content) : '',
+    content: (() => {
+      if (!note?.content) return ''
+      try { return JSON.parse(note.content) } catch { return note.plainText || '' }
+    })(),
     onUpdate: ({ editor }) => {
       if (!activeNoteId) return
       const json = JSON.stringify(editor.getJSON())

@@ -153,29 +153,43 @@ Focus on relationships explicitly stated or strongly implied in the note text.
 For shared_concepts, only include notes with genuine thematic overlap — not superficial keyword matches.
 For contradictions, only flag specific, concrete conflicts where this note clearly contradicts an established fact in the related notes (e.g., role change, org change, status flip). Omit vague or uncertain conflicts.`
 
-// ─── Pass 1b: Local Graph Index Lookup ───────────────────────────────────────
+// ─── Pass 1b: Semantic + Graph Index Lookup ─────────────────────────────────
 
-function findRelatedNotesViaGraph(
+async function findRelatedNotesViaGraph(
   entityNames: string[],
   graphStore: GraphStoreState,
-  currentNoteId: string
-): { noteIds: string[]; entityNodeMap: Map<string, string> } {
+  currentNoteId: string,
+  noteText: string
+): Promise<{ noteIds: string[]; entityNodeMap: Map<string, string> }> {
+  // Build entity label → graph node id map from lexical graph match
   const matched = graphStore.findNodesByLabels(entityNames)
-  const noteIds = [
-    ...new Set(
-      matched
-        .flatMap(n => n.noteIds)
-        .filter(id => id !== currentNoteId)
-    ),
-  ].slice(0, 10)
-
-  // Build entity label → graph node id map for edge creation
   const entityNodeMap = new Map<string, string>()
   matched.forEach(n => {
     entityNodeMap.set(n.label.toLowerCase(), n.id)
   })
 
-  return { noteIds, entityNodeMap }
+  // Lexical graph lookup — existing behavior (free, instant)
+  const graphNoteIds = new Set(
+    matched
+      .flatMap(n => n.noteIds)
+      .filter(id => id !== currentNoteId)
+  )
+
+  // Semantic search — hybrid BM25 + vector via backend (if available)
+  let semanticNoteIds: string[] = []
+  try {
+    const { semanticSearch } = await import('../backend')
+    const query = entityNames.join(' ') + ' ' + noteText.slice(0, 200)
+    const results = await semanticSearch(query, 10, [currentNoteId])
+    semanticNoteIds = results.map(r => r.note_id)
+  } catch {
+    // Backend unavailable — continue with graph-only results
+  }
+
+  // Merge: semantic results first (higher quality), then graph results
+  const allNoteIds = [...new Set([...semanticNoteIds, ...graphNoteIds])].slice(0, 10)
+
+  return { noteIds: allNoteIds, entityNodeMap }
 }
 
 // ─── Main exported function ───────────────────────────────────────────────────
@@ -237,10 +251,10 @@ export async function analyzeNoteForGraph(
     const { entities } = pass1Tool.input as ExtractedEntities
     if (!entities || entities.length === 0) return
 
-    // ── Pass 1b: Graph index lookup (no API cost) ─────────────────────────
+    // ── Pass 1b: Semantic + graph index lookup ────────────────────────────
     const entityNames = entities.map(e => e.name)
     const { noteIds: relatedNoteIds, entityNodeMap: existingEntityMap } =
-      findRelatedNotesViaGraph(entityNames, graphStore, note.id)
+      await findRelatedNotesViaGraph(entityNames, graphStore, note.id, note.plainText)
 
     // ── Upsert graph nodes ────────────────────────────────────────────────
     graphStore.upsertNoteNode(note.id, note.title)

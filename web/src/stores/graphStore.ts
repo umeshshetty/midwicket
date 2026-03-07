@@ -146,7 +146,7 @@ export const useGraphStore = create<GraphStore>()(
           target,
           type,
           label,
-          weight,
+          weight: Math.max(1, Math.min(10, weight)),
           noteIds: [noteId],
           createdAt: new Date().toISOString(),
         }
@@ -202,16 +202,20 @@ export const useGraphStore = create<GraphStore>()(
       },
 
       findNodesByLabels: (labels) => {
-        const normalised = labels.map(l => l.toLowerCase())
+        const normalised = labels.map(l => l.toLowerCase().trim())
         return get().nodes.filter(
-          n =>
-            n.type === 'entity' &&
-            normalised.some(
-              label =>
-                n.label.toLowerCase() === label ||
-                n.label.toLowerCase().startsWith(label) ||
-                label.startsWith(n.label.toLowerCase())
-            )
+          n => {
+            if (n.type !== 'entity') return false
+            const nodeLabel = n.label.toLowerCase()
+            return normalised.some(label => {
+              // Exact match — always good
+              if (nodeLabel === label) return true
+              // Prefix match only if the shorter side is ≥3 chars (avoid "Sa" → "Sarah")
+              const shorter = Math.min(nodeLabel.length, label.length)
+              if (shorter < 3) return false
+              return nodeLabel.startsWith(label) || label.startsWith(nodeLabel)
+            })
+          }
         )
       },
     }),
