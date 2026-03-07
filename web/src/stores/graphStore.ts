@@ -52,6 +52,10 @@ interface GraphStore {
   setLastFullAnalysis: (date: string) => void
   clearGraph: () => void
 
+  // Profile question lifecycle
+  dismissProfileQuestion: (entityId: string, questionId: string) => void
+  answerProfileQuestion: (entityId: string, questionId: string, noteId: string) => void
+
   // Selectors
   getNodeById: (id: string) => GraphNode | undefined
   getEdgesForNode: (nodeId: string) => GraphEdge[]
@@ -189,6 +193,40 @@ export const useGraphStore = create<GraphStore>()(
 
       setLastFullAnalysis: (date) => set({ lastFullAnalysis: date }),
       clearGraph: () => set({ nodes: [], edges: [], lastFullAnalysis: null }),
+
+      dismissProfileQuestion: (entityId, questionId) => {
+        set(s => ({
+          nodes: s.nodes.map(n => {
+            if (n.id !== entityId || !n.metadata?.profileQuestions) return n
+            return {
+              ...n,
+              metadata: {
+                ...n.metadata,
+                profileQuestions: n.metadata.profileQuestions.map(q =>
+                  q.id === questionId ? { ...q, isDismissed: true } : q
+                ),
+              },
+            }
+          }),
+        }))
+      },
+
+      answerProfileQuestion: (entityId, questionId, noteId) => {
+        set(s => ({
+          nodes: s.nodes.map(n => {
+            if (n.id !== entityId || !n.metadata?.profileQuestions) return n
+            return {
+              ...n,
+              metadata: {
+                ...n.metadata,
+                profileQuestions: n.metadata.profileQuestions.map(q =>
+                  q.id === questionId ? { ...q, answeredNoteId: noteId } : q
+                ),
+              },
+            }
+          }),
+        }))
+      },
 
       getNodeById: (id) => get().nodes.find(n => n.id === id),
       getEdgesForNode: (nodeId) =>

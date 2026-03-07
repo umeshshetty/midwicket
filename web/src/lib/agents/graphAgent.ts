@@ -7,7 +7,7 @@
  * Pass 2: If related notes found, ask Haiku to identify cross-note relationships,
  *           shared concepts, AND contradictions with established facts (second Haiku API call)
  *
- * After Pass 1: contextAgent fires in background for project/org entities (no await)
+ * After Pass 1: contextAgent fires in background for ALL entity types with 2+ notes (no await)
  * After Pass 2: any detected contradictions are stored in tensionsStore
  *
  * As the graph grows, link quality IMPROVES because the graph acts as an index.
@@ -294,14 +294,11 @@ export async function analyzeNoteForGraph(
     // Merge with existing entity map (for Pass 2 relationship resolution)
     const fullEntityMap = new Map([...existingEntityMap, ...newEntityNodeMap])
 
-    // ── Context Agent: update living briefs for project/org entities (background) ──
-    const projectOrgEntities = entities.filter(
-      e => e.type === 'project' || e.type === 'organization'
-    )
-    if (projectOrgEntities.length > 0) {
-      // Fire-and-forget — don't await, runs in parallel with Pass 2
+    // ── Context Agent: update living briefs for ALL entity types (background) ──
+    // The 2-note minimum check is inside analyzeEntityContext itself
+    if (entities.length > 0) {
       import('./contextAgent').then(({ analyzeEntityContext }) => {
-        for (const entity of projectOrgEntities) {
+        for (const entity of entities) {
           const nodeId = newEntityNodeMap.get(entity.name.toLowerCase())
           if (nodeId) {
             analyzeEntityContext(
@@ -336,6 +333,41 @@ export async function analyzeNoteForGraph(
         }
       }).catch(err => console.warn('[GraphAgent] wikiAgent import failed', err))
     }
+
+    // ── Confidence Agent: assess epistemic confidence for entities (background) ──
+    if (entities.length > 0) {
+      import('./confidenceAgent').then(({ assessEntityConfidence }) => {
+        for (const entity of entities) {
+          const nodeId = newEntityNodeMap.get(entity.name.toLowerCase())
+          if (nodeId) {
+            assessEntityConfidence(
+              nodeId,
+              entity.name,
+              entity.type as EntityType,
+              allNotes,
+              graphStore
+            )
+          }
+        }
+      }).catch(err => console.warn('[GraphAgent] confidenceAgent import failed', err))
+    }
+
+    // ── Devil's Advocate: check if any entity wikis are settled (background) ──
+    if (entities.length > 0) {
+      import('./advocateAgent').then(({ shouldGenerateCounterThesis, generateCounterThesis }) => {
+        for (const entity of entities) {
+          const nodeId = newEntityNodeMap.get(entity.name.toLowerCase())
+          if (nodeId && shouldGenerateCounterThesis(graphStore, nodeId)) {
+            generateCounterThesis(nodeId, entity.name, entity.type as EntityType, graphStore)
+          }
+        }
+      }).catch(err => console.warn('[GraphAgent] advocateAgent import failed', err))
+    }
+
+    // ── Cluster Agent: detect merge candidates (background, local, no API) ──
+    import('./clusterAgent').then(({ detectMergeCandidates }) => {
+      detectMergeCandidates(graphStore)
+    }).catch(err => console.warn('[GraphAgent] clusterAgent import failed', err))
 
     // ── Pass 2: Relationship analysis (only if we have related notes) ─────
     if (relatedNoteIds.length > 0) {
@@ -394,18 +426,38 @@ Identify entity relationships and shared concepts between the current note and t
           }
         }
 
-        // Store detected contradictions in tensionsStore
+        // Store detected contradictions in tensionsStore with blast radius
         if (contradictions && contradictions.length > 0) {
           import('../../stores/tensionsStore')
             .then(({ useTensionsStore }) => {
               const { addTension } = useTensionsStore.getState()
               for (const c of contradictions) {
+                // Compute blast radius: trace edges from the entity to find dependents
+                const entityNodeId = fullEntityMap.get(c.entity.toLowerCase())
+                let blastRadius = 0
+                const impactedEntities: string[] = []
+                if (entityNodeId) {
+                  const edges = graphStore.getEdgesForNode(entityNodeId)
+                  const seen = new Set<string>([entityNodeId])
+                  for (const edge of edges) {
+                    const otherId = edge.source === entityNodeId ? edge.target : edge.source
+                    if (seen.has(otherId)) continue
+                    seen.add(otherId)
+                    const other = graphStore.getNodeById(otherId)
+                    if (other?.type === 'entity') {
+                      impactedEntities.push(other.label)
+                    }
+                  }
+                  blastRadius = impactedEntities.length
+                }
                 addTension({
                   noteId: note.id,
                   entityLabel: c.entity,
                   conflictDescription: c.conflict_description,
                   existingFact: c.existing_fact,
                   newFact: c.new_fact,
+                  blastRadius,
+                  impactedEntities,
                 })
               }
             })

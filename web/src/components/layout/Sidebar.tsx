@@ -1,4 +1,4 @@
-import { Inbox, Search, GitFork, Bell, Settings, Brain, ChevronLeft, ChevronRight, Users, Briefcase, AlertTriangle, Filter, BookOpen, Zap, Activity } from 'lucide-react'
+import { Home, Inbox, Search, GitFork, Bell, Settings, Brain, ChevronLeft, ChevronRight, Users, Briefcase, AlertTriangle, Filter, BookOpen, Zap, Activity } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useNotesStore } from '../../stores/notesStore'
 import { useRemindersStore } from '../../stores/remindersStore'
@@ -27,6 +27,7 @@ export default function Sidebar() {
   const pulseCount = usePulseCounts().actionable
 
   const navItems: NavItem[] = [
+    { id: 'home', label: 'Home', icon: Home },
     { id: 'pulse', label: 'Pulse', icon: Activity, badge: pulseCount || undefined },
     { id: 'inbox', label: 'Inbox', icon: Inbox, badge: notes.length },
     { id: 'search', label: 'Search', icon: Search },

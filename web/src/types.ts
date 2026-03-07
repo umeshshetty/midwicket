@@ -20,7 +20,7 @@ export interface ChatMessage {
   isStreaming?: boolean
 }
 
-export type View = 'inbox' | 'note' | 'search' | 'graph' | 'reminders' | 'people' | 'work' | 'tensions' | 'sieve' | 'wiki' | 'collisions' | 'pulse'
+export type View = 'home' | 'inbox' | 'note' | 'search' | 'graph' | 'reminders' | 'people' | 'work' | 'tensions' | 'sieve' | 'wiki' | 'collisions' | 'pulse'
 
 export interface UIState {
   view: View
@@ -70,6 +70,28 @@ export interface EntityMetadata {
   // Evolution tracking
   evolutionSummary?: string  // 100-200 word narrative of how understanding evolved
   lastEvolutionAt?: string   // ISO date of last evolution analysis
+  // Profile gap detection (AI-maintained)
+  profileQuestions?: ProfileQuestion[]  // What the system doesn't know about this entity
+  lastProfileQuestionsAt?: string       // ISO date of last question generation
+  // Epistemic confidence (AI-maintained)
+  confidence?: EpistemicConfidence
+  // Devil's Advocate counter-thesis (AI-maintained)
+  counterThesis?: CounterThesis
+  // Merge suggestion (theme clustering)
+  mergeSuggestion?: MergeSuggestion
+}
+
+export interface ProfileQuestion {
+  id: string
+  entityId: string            // graph node ID
+  entityLabel: string
+  entityType: EntityType
+  question: string            // the actual question text
+  reason: string              // why the system is asking (≤15 words)
+  priority: 'high' | 'medium' | 'low'
+  createdAt: string
+  isDismissed: boolean
+  answeredNoteId?: string     // if answered, the note ID created
 }
 
 export interface GraphNode {
@@ -114,6 +136,8 @@ export interface Tension {
   isDismissed: boolean
   isReconciled: boolean
   reconcileNoteId?: string   // ID of synthesis note
+  blastRadius?: number         // count of downstream entities impacted
+  impactedEntities?: string[]  // labels of entities that depend on the contradicted fact
 }
 
 // ─── BRAIN DUMP / SIEVE TYPES ───────────────────────────────────────────────
@@ -197,6 +221,36 @@ export interface BlindspotAnalysis {
   entityLabel?: string       // If scoped to an entity
   noteIds: string[]          // Notes that were analyzed
   blindspots: Blindspot[]
+  createdAt: string
+}
+
+// ─── EPISTEMIC CONFIDENCE ───────────────────────────────────────────────────
+
+export type ConfidenceLevel = 'fact' | 'strong_belief' | 'assumption'
+
+export interface EpistemicConfidence {
+  level: ConfidenceLevel
+  score: number               // 0-100
+  reasoning: string           // ≤30 words explaining the assessment
+  assessedAt: string          // ISO date
+}
+
+// ─── DEVIL'S ADVOCATE ──────────────────────────────────────────────────────
+
+export interface CounterThesis {
+  thesis: string              // 100-200 word counter-argument
+  assessedAt: string          // ISO date
+  wikiVersionAtAssessment: number  // wiki version when generated
+}
+
+// ─── MERGE SUGGESTION ──────────────────────────────────────────────────────
+
+export interface MergeSuggestion {
+  targetEntityId: string      // the other entity to merge with
+  targetLabel: string
+  overlapScore: number        // 0-100, percentage of shared notes
+  reason: string              // ≤20 words
+  isDismissed: boolean
   createdAt: string
 }
 

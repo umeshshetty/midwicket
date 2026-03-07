@@ -2,23 +2,19 @@ import { useState, useMemo } from 'react'
 import {
   Activity, AlertTriangle, AlertOctagon, HelpCircle, EyeOff, Ghost,
   ChevronDown, ChevronRight, ArrowRight, CheckCircle,
+  MessageCircleQuestion, GitMerge,
 } from 'lucide-react'
 import { useGraphStore } from '../../stores/graphStore'
 import { useTensionsStore } from '../../stores/tensionsStore'
 import { useBlindspotStore } from '../../stores/blindspotStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePulseCounts } from '../../lib/pulse'
+import { EntityChip, ProfileQuestionCard } from './shared'
 import type { EntityType } from '../../types'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const THIRTY_DAYS = 30 * 86400000
-
-const ENTITY_COLORS: Record<string, string> = {
-  person: '#14b8a6', project: '#f59e0b', concept: '#8b5cf6',
-  technology: '#3b82f6', organization: '#f97316', idea: '#e879f9',
-  place: '#22c55e', event: '#f43f5e',
-}
 
 const BLINDSPOT_COLORS: Record<string, string> = {
   'Missing Perspective': '#8b5cf6', 'Assumption Gap': '#f43f5e',
@@ -57,20 +53,6 @@ function PulseSection({
       </button>
       {isOpen && <div className="space-y-1.5 ml-1">{children}</div>}
     </div>
-  )
-}
-
-// ─── Entity Chip ─────────────────────────────────────────────────────────────
-
-function EntityChip({ label, entityType }: { label: string; entityType?: EntityType }) {
-  const color = ENTITY_COLORS[entityType ?? ''] ?? '#9090a8'
-  return (
-    <span
-      className="text-xs rounded-full px-2 py-0.5 font-medium flex-shrink-0"
-      style={{ background: `${color}18`, color }}
-    >
-      {label}
-    </span>
   )
 }
 
@@ -131,6 +113,27 @@ export default function PulseView() {
     [nodes]
   )
 
+  // Profile questions (active only)
+  const profileQuestionItems = useMemo(() =>
+    nodes
+      .filter(n => n.type === 'entity' && n.metadata?.profileQuestions?.length)
+      .flatMap(n => n.metadata!.profileQuestions!
+        .filter(q => !q.isDismissed && !q.answeredNoteId)
+        .map(q => ({
+          ...q,
+          nodeId: n.id,
+          entityLabel: n.label,
+          entityType: n.entityType,
+        }))
+      )
+      .sort((a, b) => {
+        const order: Record<string, number> = { high: 0, medium: 1, low: 2 }
+        return (order[a.priority] ?? 2) - (order[b.priority] ?? 2)
+      })
+      .slice(0, 15),
+    [nodes]
+  )
+
   // Recent blindspot findings
   const blindspotItems = useMemo(() =>
     analyses.slice(0, 10).flatMap(a =>
@@ -139,6 +142,19 @@ export default function PulseView() {
       }))
     ),
     [analyses]
+  )
+
+  // Merge suggestions from theme clustering
+  const mergeSuggestions = useMemo(() =>
+    nodes
+      .filter(n => n.type === 'entity' && n.metadata?.mergeSuggestion && !n.metadata.mergeSuggestion.isDismissed)
+      .map(n => ({
+        sourceNode: n,
+        suggestion: n.metadata!.mergeSuggestion!,
+        targetNode: nodes.find(t => t.id === n.metadata!.mergeSuggestion!.targetEntityId),
+      }))
+      .filter(item => item.targetNode != null),
+    [nodes]
   )
 
   // Sparse or stale entities
@@ -161,6 +177,10 @@ export default function PulseView() {
     if (entityType === 'person') setView('people')
     else if (entityType === 'project' || entityType === 'organization') setView('work')
     else setView('wiki')
+  }
+
+  function handleDismissQuestion(entityId: string, questionId: string) {
+    useGraphStore.getState().dismissProfileQuestion(entityId, questionId)
   }
 
   return (
@@ -258,6 +278,22 @@ export default function PulseView() {
               ))}
             </PulseSection>
 
+            {/* Profile Questions — Help your brain learn */}
+            <PulseSection
+              icon={MessageCircleQuestion}
+              title="Help Your Brain Learn"
+              count={counts.profileQuestions}
+              accentColor="#14b8a6"
+            >
+              {profileQuestionItems.map(item => (
+                <ProfileQuestionCard
+                  key={item.id}
+                  item={item}
+                  onDismiss={handleDismissQuestion}
+                />
+              ))}
+            </PulseSection>
+
             {/* Blindspots */}
             <PulseSection icon={EyeOff} title="Blindspots" count={counts.blindspots} accentColor="#8b5cf6" defaultOpen={false}>
               {blindspotItems.map((item, i) => (
@@ -278,7 +314,25 @@ export default function PulseView() {
                       )}
                     </div>
                     <p className="text-sm" style={{ color: '#e8e8f0' }}>{item.gap}</p>
-                    <p className="text-xs mt-1" style={{ color: '#14b8a6' }}>→ {item.suggestion}</p>
+                    <p className="text-xs mt-1" style={{ color: '#14b8a6' }}>{item.suggestion}</p>
+                  </div>
+                </PulseItem>
+              ))}
+            </PulseSection>
+
+            {/* Merge Suggestions */}
+            <PulseSection icon={GitMerge} title="Merge Candidates" count={mergeSuggestions.length} accentColor="#e879f9" defaultOpen={false}>
+              {mergeSuggestions.map(({ sourceNode, suggestion, targetNode }) => (
+                <PulseItem key={sourceNode.id} onClick={() => setView('wiki')}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <EntityChip label={sourceNode.label} entityType={sourceNode.entityType} />
+                      <ArrowRight size={12} style={{ color: '#5a5a72' }} />
+                      <EntityChip label={targetNode!.label} entityType={targetNode!.entityType} />
+                    </div>
+                    <p className="text-xs" style={{ color: '#9090a8' }}>
+                      {suggestion.overlapScore}% overlap — {suggestion.reason}
+                    </p>
                   </div>
                 </PulseItem>
               ))}

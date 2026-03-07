@@ -4,7 +4,7 @@ import { usePulseCounts } from '../../lib/pulse'
 
 export default function PulseInboxCard() {
   const setView = useUIStore(s => s.setView)
-  const { tensions, blockers, openQuestions, actionable } = usePulseCounts()
+  const { tensions, blockers, openQuestions, profileQuestions, actionable } = usePulseCounts()
 
   if (actionable === 0) return null
 
@@ -52,6 +52,11 @@ export default function PulseInboxCard() {
         {openQuestions > 0 && (
           <span className="text-xs rounded-full px-2 py-0.5" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>
             {openQuestions} question{openQuestions !== 1 ? 's' : ''}
+          </span>
+        )}
+        {profileQuestions > 0 && (
+          <span className="text-xs rounded-full px-2 py-0.5" style={{ background: 'rgba(20,184,166,0.12)', color: '#14b8a6' }}>
+            {profileQuestions} gap{profileQuestions !== 1 ? 's' : ''}
           </span>
         )}
       </div>

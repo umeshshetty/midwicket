@@ -5,6 +5,7 @@ import { useNotesStore } from '../../stores/notesStore'
 import { useUIStore } from '../../stores/uiStore'
 import BlindspotPanel from '../blindspot/BlindspotPanel'
 import EvolutionTimeline from '../shared/EvolutionTimeline'
+import { ConfidenceBadge } from '../pulse/shared'
 import type { GraphNode } from '../../types'
 
 // ─── Relationship badge colours ───────────────────────────────────────────────
@@ -55,7 +56,7 @@ function PersonCard({ node, isSelected, onClick }: { node: GraphNode; isSelected
         </div>
       )}
 
-      {/* Footer: relationship badge + last seen */}
+      {/* Footer: relationship badge + confidence + last seen */}
       <div className="flex items-center gap-2">
         {rc && m?.relationshipType && (
           <span
@@ -64,6 +65,9 @@ function PersonCard({ node, isSelected, onClick }: { node: GraphNode; isSelected
           >
             {m.relationshipType}
           </span>
+        )}
+        {m?.confidence && (
+          <ConfidenceBadge level={m.confidence.level} score={m.confidence.score} />
         )}
         {lastDate && (
           <span className="text-xs ml-auto" style={{ color: '#5a5a72' }}>

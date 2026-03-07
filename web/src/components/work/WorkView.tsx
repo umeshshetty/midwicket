@@ -5,6 +5,7 @@ import { useNotesStore } from '../../stores/notesStore'
 import { useUIStore } from '../../stores/uiStore'
 import BlindspotPanel from '../blindspot/BlindspotPanel'
 import EvolutionTimeline from '../shared/EvolutionTimeline'
+import { ConfidenceBadge } from '../pulse/shared'
 import type { GraphNode } from '../../types'
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
@@ -64,23 +65,24 @@ function WorkCard({ node, isSelected, onClick }: { node: GraphNode; isSelected: 
         <div className="text-xs mb-2 line-clamp-2" style={{ color: '#9090a8' }}>{m.description}</div>
       )}
 
-      {/* Stakeholder chips */}
-      {m?.stakeholders && m.stakeholders.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {m.stakeholders.slice(0, 3).map(s => (
-            <span
-              key={s}
-              className="text-xs rounded-full px-2 py-0.5"
-              style={{ background: 'rgba(20,184,166,0.12)', color: '#14b8a6' }}
-            >
-              {s}
-            </span>
-          ))}
-          {m.stakeholders.length > 3 && (
-            <span className="text-xs" style={{ color: '#5a5a72' }}>+{m.stakeholders.length - 3}</span>
-          )}
-        </div>
-      )}
+      {/* Stakeholder chips + confidence */}
+      <div className="flex flex-wrap items-center gap-1">
+        {m?.stakeholders?.slice(0, 3).map(s => (
+          <span
+            key={s}
+            className="text-xs rounded-full px-2 py-0.5"
+            style={{ background: 'rgba(20,184,166,0.12)', color: '#14b8a6' }}
+          >
+            {s}
+          </span>
+        ))}
+        {m?.stakeholders && m.stakeholders.length > 3 && (
+          <span className="text-xs" style={{ color: '#5a5a72' }}>+{m.stakeholders.length - 3}</span>
+        )}
+        {m?.confidence && (
+          <ConfidenceBadge level={m.confidence.level} score={m.confidence.score} />
+        )}
+      </div>
     </button>
   )
 }

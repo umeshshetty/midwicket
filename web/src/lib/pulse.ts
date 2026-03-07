@@ -7,10 +7,11 @@ export interface PulseCounts {
   tensions: number
   blockers: number
   openQuestions: number
+  profileQuestions: number
   blindspots: number
   sparse: number
   total: number
-  actionable: number // tensions + blockers + openQuestions
+  actionable: number // tensions + blockers + openQuestions + profileQuestions
 }
 
 const THIRTY_DAYS = 30 * 86400000
@@ -25,6 +26,7 @@ export function usePulseCounts(): PulseCounts {
 
     let blockerCount = 0
     let questionCount = 0
+    let profileQuestionCount = 0
     let sparseCount = 0
     const now = Date.now()
 
@@ -32,6 +34,11 @@ export function usePulseCounts(): PulseCounts {
       if (n.type !== 'entity') continue
       if (n.metadata?.blockers?.length) blockerCount += n.metadata.blockers.length
       if (n.metadata?.openQuestions?.length) questionCount += n.metadata.openQuestions.length
+      if (n.metadata?.profileQuestions?.length) {
+        profileQuestionCount += n.metadata.profileQuestions.filter(
+          q => !q.isDismissed && !q.answeredNoteId
+        ).length
+      }
       const isSparse = n.noteIds.length <= 1
       const isStale = n.metadata?.lastMentionedAt
         ? (now - new Date(n.metadata.lastMentionedAt).getTime()) > THIRTY_DAYS
@@ -40,12 +47,13 @@ export function usePulseCounts(): PulseCounts {
     }
 
     const blindspotCount = analyses.reduce((sum, a) => sum + a.blindspots.length, 0)
-    const actionable = tensionCount + blockerCount + questionCount
+    const actionable = tensionCount + blockerCount + questionCount + profileQuestionCount
 
     return {
       tensions: tensionCount,
       blockers: blockerCount,
       openQuestions: questionCount,
+      profileQuestions: profileQuestionCount,
       blindspots: blindspotCount,
       sparse: sparseCount,
       total: actionable + blindspotCount + sparseCount,

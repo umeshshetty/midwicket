@@ -19,7 +19,7 @@ interface UIStore {
 }
 
 export const useUIStore = create<UIStore>((set) => ({
-  view: 'inbox',
+  view: 'home',
   activeNoteId: null,
   isChatOpen: false,
   isSidebarCollapsed: false,
@@ -28,7 +28,7 @@ export const useUIStore = create<UIStore>((set) => ({
 
   setView: (view) => set({ view, activeNoteId: null }),
   openNote: (id) => set({ view: 'note', activeNoteId: id }),
-  closeNote: () => set({ view: 'inbox', activeNoteId: null }),
+  closeNote: () => set({ view: 'home', activeNoteId: null }),
   toggleChat: () => set(s => ({ isChatOpen: !s.isChatOpen })),
   toggleSidebar: () => set(s => ({ isSidebarCollapsed: !s.isSidebarCollapsed })),
   setSearchQuery: (searchQuery) => set({ searchQuery, view: 'search' }),

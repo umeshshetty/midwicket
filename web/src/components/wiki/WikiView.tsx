@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { BookOpen, RefreshCw, Search, FileText, Loader2 } from 'lucide-react'
+import { BookOpen, RefreshCw, Search, FileText, Loader2, Scale } from 'lucide-react'
 import { useGraphStore } from '../../stores/graphStore'
 import { useNotesStore } from '../../stores/notesStore'
 import { useWikiStore } from '../../stores/wikiStore'
 import { useUIStore } from '../../stores/uiStore'
 import BlindspotPanel from '../blindspot/BlindspotPanel'
 import EvolutionTimeline from '../shared/EvolutionTimeline'
+import { ConfidenceBadge } from '../pulse/shared'
 import type { GraphNode, EntityType } from '../../types'
 
 // ─── Simple Markdown Renderer ────────────────────────────────────────────────
@@ -128,6 +129,9 @@ function WikiDetail({ node }: { node: GraphNode }) {
             <span className="text-xs" style={{ color: '#5a5a72' }}>
               {node.noteIds.length} notes
             </span>
+            {node.metadata?.confidence && (
+              <ConfidenceBadge level={node.metadata.confidence.level} score={node.metadata.confidence.score} />
+            )}
           </div>
           <h2 className="text-lg font-bold" style={{ color: '#e8e8f0' }}>
             {node.label}
@@ -173,6 +177,27 @@ function WikiDetail({ node }: { node: GraphNode }) {
       {node.metadata?.lastWikiAt && (
         <div className="text-xs mb-6" style={{ color: '#3d3d47' }}>
           v{node.metadata.wikiVersion ?? 1} · Last updated {node.metadata.lastWikiAt}
+        </div>
+      )}
+
+      {/* Counter-Thesis (Devil's Advocate) */}
+      {node.metadata?.counterThesis && (
+        <div
+          className="rounded-xl p-4 mb-6"
+          style={{ background: 'rgba(244,63,94,0.04)', border: '1px solid rgba(244,63,94,0.15)' }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <Scale size={14} style={{ color: '#f43f5e' }} />
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#f43f5e' }}>
+              Devil's Advocate
+            </span>
+            <span className="text-xs ml-auto" style={{ color: '#3d3d47' }}>
+              wiki v{node.metadata.counterThesis.wikiVersionAtAssessment}
+            </span>
+          </div>
+          <p className="text-sm leading-relaxed" style={{ color: '#c4a0a8' }}>
+            {node.metadata.counterThesis.thesis}
+          </p>
         </div>
       )}
 

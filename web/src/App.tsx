@@ -18,6 +18,7 @@ import SieveView from './components/sieve/SieveView'
 import WikiView from './components/wiki/WikiView'
 import CollisionsView from './components/collisions/CollisionsView'
 import PulseView from './components/pulse/PulseView'
+import HomeView from './components/home/HomeView'
 
 // ─── Error Boundary ──────────────────────────────────────────────────────────
 
@@ -149,6 +150,9 @@ function AppContent() {
 
           {/* Main panel */}
           <main className="flex flex-col flex-1 min-w-0">
+            {view === 'home' && (
+              <HomeView />
+            )}
             {view === 'pulse' && (
               <PulseView />
             )}

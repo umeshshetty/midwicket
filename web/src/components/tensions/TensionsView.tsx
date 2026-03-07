@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronRight, X, FileText, CheckCircle, PenTool } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, X, FileText, CheckCircle, PenTool, Zap } from 'lucide-react'
 import { useTensionsStore } from '../../stores/tensionsStore'
 import { useUIStore } from '../../stores/uiStore'
 import type { Tension } from '../../types'
@@ -78,6 +78,25 @@ function TensionCard({ tension }: { tension: Tension }) {
           <div className="text-xs leading-relaxed" style={{ color: '#9adbd5' }}>{tension.newFact}</div>
         </div>
       </div>
+
+      {/* Blast Radius */}
+      {tension.blastRadius != null && tension.blastRadius > 0 && (
+        <div
+          className="flex items-center gap-2 rounded-lg px-3 py-2"
+          style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)' }}
+        >
+          <Zap size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />
+          <span className="text-xs" style={{ color: '#f59e0b' }}>
+            Blast radius: {tension.blastRadius} dependent entit{tension.blastRadius === 1 ? 'y' : 'ies'}
+          </span>
+          {tension.impactedEntities && tension.impactedEntities.length > 0 && (
+            <span className="text-xs" style={{ color: '#9090a8' }}>
+              — {tension.impactedEntities.slice(0, 5).join(', ')}
+              {tension.impactedEntities.length > 5 && ` +${tension.impactedEntities.length - 5}`}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
