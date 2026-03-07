@@ -4,7 +4,6 @@ import type { UserProfile, ThinkingStyle } from '../types'
 
 interface UserStore {
   profile: UserProfile | null
-  _hasHydrated: boolean
   isOnboarded: () => boolean
   setProfile: (profile: UserProfile) => void
   updateProfile: (updates: Partial<UserProfile>) => void
@@ -15,7 +14,6 @@ export const useUserStore = create<UserStore>()(
   persist(
     (set, get) => ({
       profile: null,
-      _hasHydrated: false,
 
       isOnboarded: () => get().profile !== null,
 
@@ -34,9 +32,7 @@ export const useUserStore = create<UserStore>()(
     {
       name: 'midwicket-user',
       version: 1,
-      onRehydrateStorage: () => () => {
-        useUserStore.setState({ _hasHydrated: true })
-      },
+      partialize: (state) => ({ profile: state.profile }),
     }
   )
 )

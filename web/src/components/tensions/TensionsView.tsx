@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronRight, X, FileText, CheckCircle } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, X, FileText, CheckCircle, PenTool } from 'lucide-react'
 import { useTensionsStore } from '../../stores/tensionsStore'
 import { useUIStore } from '../../stores/uiStore'
 import type { Tension } from '../../types'
@@ -86,10 +86,13 @@ function TensionCard({ tension }: { tension: Tension }) {
 
 export default function TensionsView() {
   const [showDismissed, setShowDismissed] = useState(false)
+  const [showReconciled, setShowReconciled] = useState(false)
   const tensions = useTensionsStore(s => s.tensions)
+  const openNote = useUIStore(s => s.openNote)
 
-  const pending = tensions.filter(t => !t.isDismissed)
-  const dismissed = tensions.filter(t => t.isDismissed)
+  const pending = tensions.filter(t => !t.isDismissed && !t.isReconciled)
+  const reconciled = tensions.filter(t => t.isReconciled)
+  const dismissed = tensions.filter(t => t.isDismissed && !t.isReconciled)
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-y-auto" style={{ background: '#0c0c0d' }}>
@@ -125,6 +128,42 @@ export default function TensionsView() {
         ) : (
           <div className="space-y-2">
             {pending.map(t => <TensionCard key={t.id} tension={t} />)}
+          </div>
+        )}
+
+        {/* Reconciled section (collapsible) */}
+        {reconciled.length > 0 && (
+          <div className="pt-2 border-t" style={{ borderColor: '#2e2e35' }}>
+            <button
+              onClick={() => setShowReconciled(v => !v)}
+              className="flex items-center gap-1.5 mb-2 text-xs transition-colors"
+              style={{ color: '#8b5cf6' }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = '#a78bfa'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = '#8b5cf6'}
+            >
+              {showReconciled ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+              <PenTool size={11} />
+              Reconciled ({reconciled.length})
+            </button>
+            {showReconciled && (
+              <div className="space-y-2">
+                {reconciled.map(t => (
+                  <div key={t.id} className="flex items-center gap-2">
+                    <div className="flex-1"><TensionCard tension={t} /></div>
+                    {t.reconcileNoteId && (
+                      <button
+                        onClick={() => openNote(t.reconcileNoteId!)}
+                        className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs flex-shrink-0"
+                        style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6' }}
+                        title="Open synthesis note"
+                      >
+                        <FileText size={11} /> Synthesis
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

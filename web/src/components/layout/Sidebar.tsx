@@ -1,9 +1,10 @@
-import { Inbox, Search, GitFork, Bell, Settings, Brain, ChevronLeft, ChevronRight, Users, Briefcase, AlertTriangle, Filter } from 'lucide-react'
+import { Inbox, Search, GitFork, Bell, Settings, Brain, ChevronLeft, ChevronRight, Users, Briefcase, AlertTriangle, Filter, BookOpen, Zap, Activity } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useNotesStore } from '../../stores/notesStore'
 import { useRemindersStore } from '../../stores/remindersStore'
 import { useGraphStore } from '../../stores/graphStore'
 import { useTensionsStore } from '../../stores/tensionsStore'
+import { usePulseCounts } from '../../lib/pulse'
 import type { View } from '../../types'
 
 interface NavItem {
@@ -22,15 +23,20 @@ export default function Sidebar() {
   const peopleCount = graphNodes.filter(n => n.type === 'entity' && n.entityType === 'person').length
   const workCount = graphNodes.filter(n => n.type === 'entity' && (n.entityType === 'project' || n.entityType === 'organization')).length
   const tensionCount = useTensionsStore(s => s.pendingCount())
+  const wikiCount = graphNodes.filter(n => n.type === 'entity' && n.metadata?.wiki).length
+  const pulseCount = usePulseCounts().actionable
 
   const navItems: NavItem[] = [
+    { id: 'pulse', label: 'Pulse', icon: Activity, badge: pulseCount || undefined },
     { id: 'inbox', label: 'Inbox', icon: Inbox, badge: notes.length },
     { id: 'search', label: 'Search', icon: Search },
     { id: 'graph', label: 'Graph', icon: GitFork },
+    { id: 'wiki', label: 'Wiki', icon: BookOpen, badge: wikiCount || undefined },
     { id: 'reminders', label: 'Reminders', icon: Bell, badge: pendingReminders || undefined },
     { id: 'people', label: 'People', icon: Users, badge: peopleCount || undefined },
     { id: 'work', label: 'Work', icon: Briefcase, badge: workCount || undefined },
     { id: 'tensions', label: 'Tensions', icon: AlertTriangle, badge: tensionCount || undefined },
+    { id: 'collisions', label: 'Collisions', icon: Zap },
     { id: 'sieve', label: 'Sieve', icon: Filter },
   ]
 

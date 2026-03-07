@@ -318,6 +318,25 @@ export async function analyzeNoteForGraph(
       }).catch(err => console.warn('[GraphAgent] contextAgent import failed', err))
     }
 
+    // ── Wiki Agent: update synthesis pages for entities with 2+ notes (background) ──
+    if (entities.length > 0) {
+      import('./wikiAgent').then(({ generateEntityWiki }) => {
+        for (const entity of entities) {
+          const nodeId = newEntityNodeMap.get(entity.name.toLowerCase())
+          if (nodeId) {
+            generateEntityWiki(
+              nodeId,
+              entity.name,
+              entity.type as EntityType,
+              note.id,
+              allNotes,
+              graphStore
+            )
+          }
+        }
+      }).catch(err => console.warn('[GraphAgent] wikiAgent import failed', err))
+    }
+
     // ── Pass 2: Relationship analysis (only if we have related notes) ─────
     if (relatedNoteIds.length > 0) {
       const relatedNotes = allNotes.filter(n => relatedNoteIds.includes(n.id))

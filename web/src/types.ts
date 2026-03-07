@@ -20,7 +20,7 @@ export interface ChatMessage {
   isStreaming?: boolean
 }
 
-export type View = 'inbox' | 'note' | 'search' | 'graph' | 'reminders' | 'people' | 'work' | 'tensions' | 'sieve'
+export type View = 'inbox' | 'note' | 'search' | 'graph' | 'reminders' | 'people' | 'work' | 'tensions' | 'sieve' | 'wiki' | 'collisions' | 'pulse'
 
 export interface UIState {
   view: View
@@ -63,6 +63,13 @@ export interface EntityMetadata {
   openQuestions?: string[]   // Outstanding unknowns for this project/org
   blockers?: string[]        // Current blockers
   lastSummaryAt?: string     // ISO date of last context update
+  // Wiki synthesis (AI-maintained)
+  wiki?: string              // 500-1000 word synthesis page, maintained by wikiAgent
+  lastWikiAt?: string        // ISO date of last wiki generation
+  wikiVersion?: number       // Incremented each regeneration
+  // Evolution tracking
+  evolutionSummary?: string  // 100-200 word narrative of how understanding evolved
+  lastEvolutionAt?: string   // ISO date of last evolution analysis
 }
 
 export interface GraphNode {
@@ -105,6 +112,8 @@ export interface Tension {
   newFact: string              // what this note says
   createdAt: string
   isDismissed: boolean
+  isReconciled: boolean
+  reconcileNoteId?: string   // ID of synthesis note
 }
 
 // ─── BRAIN DUMP / SIEVE TYPES ───────────────────────────────────────────────
@@ -171,4 +180,35 @@ export interface Reminder {
   isDone: boolean
   createdAt: string
   updatedAt: string
+}
+
+// ─── BLINDSPOT TYPES ────────────────────────────────────────────────────────
+
+export interface Blindspot {
+  id: string
+  category: string           // "Missing Perspective", "Assumption Gap", etc.
+  gap: string                // What's missing (1-2 sentences)
+  suggestion: string         // Actionable exploration suggestion
+  relevantEntities: string[]
+}
+
+export interface BlindspotAnalysis {
+  id: string
+  entityLabel?: string       // If scoped to an entity
+  noteIds: string[]          // Notes that were analyzed
+  blindspots: Blindspot[]
+  createdAt: string
+}
+
+// ─── COLLISION TYPES ────────────────────────────────────────────────────────
+
+export interface Collision {
+  id: string
+  nodeA: { id: string; label: string; entityType?: EntityType }
+  nodeB: { id: string; label: string; entityType?: EntityType }
+  connection: string         // AI-generated creative connection (2-4 sentences)
+  provocativeQuestion: string
+  strength: number           // 1-10
+  createdAt: string
+  isBookmarked: boolean
 }

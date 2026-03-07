@@ -3,6 +3,8 @@ import { Users, ArrowLeft, FileText } from 'lucide-react'
 import { useGraphStore } from '../../stores/graphStore'
 import { useNotesStore } from '../../stores/notesStore'
 import { useUIStore } from '../../stores/uiStore'
+import BlindspotPanel from '../blindspot/BlindspotPanel'
+import EvolutionTimeline from '../shared/EvolutionTimeline'
 import type { GraphNode } from '../../types'
 
 // ─── Relationship badge colours ───────────────────────────────────────────────
@@ -167,6 +169,16 @@ function PersonDetail({ node, onClose }: { node: GraphNode; onClose: () => void 
             ))}
           </div>
         )}
+
+        {/* Evolution Timeline */}
+        <EvolutionTimeline entityNode={node} />
+
+        {/* Blindspot Analysis */}
+        <BlindspotPanel
+          noteIds={node.noteIds}
+          entityLabel={node.label}
+          entityContext={m?.summary ?? m?.keyFact}
+        />
       </div>
     </div>
   )

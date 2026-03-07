@@ -3,6 +3,8 @@ import { Briefcase, ArrowLeft, FileText, Users, HelpCircle, AlertOctagon, Sparkl
 import { useGraphStore } from '../../stores/graphStore'
 import { useNotesStore } from '../../stores/notesStore'
 import { useUIStore } from '../../stores/uiStore'
+import BlindspotPanel from '../blindspot/BlindspotPanel'
+import EvolutionTimeline from '../shared/EvolutionTimeline'
 import type { GraphNode } from '../../types'
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
@@ -254,6 +256,16 @@ function WorkDetail({ node, onClose }: { node: GraphNode; onClose: () => void })
             ))}
           </div>
         )}
+
+        {/* Evolution Timeline */}
+        <EvolutionTimeline entityNode={node} />
+
+        {/* Blindspot Analysis */}
+        <BlindspotPanel
+          noteIds={node.noteIds}
+          entityLabel={node.label}
+          entityContext={m?.summary ?? m?.description}
+        />
       </div>
     </div>
   )
