@@ -135,6 +135,24 @@ export interface ChatThread {
   messageCount: number
 }
 
+// ─── USER PROFILE TYPES ─────────────────────────────────────────────────────
+
+export type ThinkingStyle = 'visual' | 'verbal' | 'kinesthetic' | 'mixed'
+
+export interface UserProfile {
+  name: string
+  role?: string
+  organization?: string
+  industry?: string
+  focusAreas: string[]
+  thinkingStyle?: ThinkingStyle
+  challengeLevel: number          // 1–5, default 3
+  goals: string[]
+  customGoal?: string
+  onboardedAt: string             // ISO date
+  updatedAt: string
+}
+
 // ─── REMINDER TYPES ──────────────────────────────────────────────────────────
 
 export type ReminderType = 'task' | 'event' | 'deadline' | 'reminder'

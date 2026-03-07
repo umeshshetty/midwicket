@@ -7,12 +7,15 @@ interface UIStore {
   isChatOpen: boolean
   isSidebarCollapsed: boolean
   searchQuery: string
+  isProfileOpen: boolean
   setView: (view: View) => void
   openNote: (id: string) => void
   closeNote: () => void
   toggleChat: () => void
   toggleSidebar: () => void
   setSearchQuery: (q: string) => void
+  openProfile: () => void
+  closeProfile: () => void
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -21,6 +24,7 @@ export const useUIStore = create<UIStore>((set) => ({
   isChatOpen: false,
   isSidebarCollapsed: false,
   searchQuery: '',
+  isProfileOpen: false,
 
   setView: (view) => set({ view, activeNoteId: null }),
   openNote: (id) => set({ view: 'note', activeNoteId: id }),
@@ -28,4 +32,6 @@ export const useUIStore = create<UIStore>((set) => ({
   toggleChat: () => set(s => ({ isChatOpen: !s.isChatOpen })),
   toggleSidebar: () => set(s => ({ isSidebarCollapsed: !s.isSidebarCollapsed })),
   setSearchQuery: (searchQuery) => set({ searchQuery, view: 'search' }),
+  openProfile: () => set({ isProfileOpen: true }),
+  closeProfile: () => set({ isProfileOpen: false }),
 }))

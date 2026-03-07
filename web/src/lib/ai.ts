@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { GraphNode, Tension, ChatThread } from '../types'
+import type { GraphNode, Tension, ChatThread, UserProfile } from '../types'
 
 const SYSTEM_PROMPT = `You are a "Thinking Partner" — not an assistant that gives direct answers, but a Socratic guide that helps the user think more clearly.
 
@@ -197,4 +197,61 @@ export function buildThreadContext(threads: ChatThread[]): string {
   })
 
   return 'RECENT CONVERSATION THREADS (for context restoration):\n' + lines.join('\n')
+}
+
+const CHALLENGE_LABELS: Record<number, string> = {
+  1: 'gentle — focus on encouragement, minimal pushback',
+  2: 'supportive — validate often, probe gently',
+  3: 'balanced — support strong ideas, challenge weak ones',
+  4: 'rigorous — actively challenge assumptions, demand evidence',
+  5: 'relentless — stress-test everything, play devil\'s advocate frequently',
+}
+
+const GOAL_LABELS: Record<string, string> = {
+  think: 'structured reasoning and problem-solving',
+  projects: 'project tracking and dependency awareness',
+  remember: 'recall and knowledge retrieval',
+  connections: 'pattern recognition across ideas',
+  emotional: 'emotional processing and stress management',
+}
+
+/**
+ * Builds user profile context for the AI system prompt.
+ * Personalizes greetings, challenge calibration, and focus areas.
+ */
+export function buildUserContext(profile: UserProfile | null): string {
+  if (!profile) return ''
+
+  const parts: string[] = []
+
+  // Identity line
+  const identity = [profile.name]
+  if (profile.role) identity.push(profile.role)
+  if (profile.organization) identity.push(`@ ${profile.organization}`)
+  if (profile.industry) identity.push(`(${profile.industry})`)
+  parts.push(`Name: ${identity.join(' | ')}`)
+
+  // Focus areas
+  if (profile.focusAreas.length > 0) {
+    parts.push(`Focus areas: ${profile.focusAreas.join(', ')}`)
+  }
+
+  // Thinking calibration
+  const challengeDesc = CHALLENGE_LABELS[profile.challengeLevel] ?? CHALLENGE_LABELS[3]
+  parts.push(`Challenge level: ${profile.challengeLevel}/5 — ${challengeDesc}`)
+
+  if (profile.thinkingStyle) {
+    parts.push(`Thinking style: ${profile.thinkingStyle}`)
+  }
+
+  // Goals
+  if (profile.goals.length > 0) {
+    const goalDescs = profile.goals.map(g => GOAL_LABELS[g] ?? g)
+    parts.push(`Primary goals: ${goalDescs.join(', ')}`)
+  }
+  if (profile.customGoal) {
+    parts.push(`Custom goal: ${profile.customGoal}`)
+  }
+
+  return `USER PROFILE (use ${profile.name}'s name naturally, calibrate challenge intensity to their level):\n${parts.join('\n')}`
 }

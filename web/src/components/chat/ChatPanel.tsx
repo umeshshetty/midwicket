@@ -5,11 +5,13 @@ import { useNotesStore } from '../../stores/notesStore'
 import { useGraphStore } from '../../stores/graphStore'
 import { useTensionsStore } from '../../stores/tensionsStore'
 import { useThreadStore } from '../../stores/threadStore'
+import { useUserStore } from '../../stores/userStore'
 import {
   streamChat, buildNotesContext, buildProjectContext, buildTensionsContext,
-  buildDependencyContext, buildThreadContext,
+  buildDependencyContext, buildThreadContext, buildUserContext,
 } from '../../lib/ai'
 import { computeDecayScore } from '../../lib/decay'
+import { semanticSearch } from '../../lib/backend'
 import type { ChatTurn } from '../../lib/ai'
 
 function MessageBubble({ role, content, isStreaming }: { role: 'user' | 'assistant'; content: string; isStreaming?: boolean }) {
@@ -70,6 +72,7 @@ export default function ChatPanel() {
   const graphNodes = useGraphStore(s => s.nodes)
   const tensions = useTensionsStore(s => s.tensions)
   const { threads, addForkedIdea, updateThread, getActiveThread } = useThreadStore()
+  const userProfile = useUserStore(s => s.profile)
 
   // Decay-sorted notes: most relevant (recent + graph-connected) first
   const sortedNotes = useMemo(
@@ -131,13 +134,30 @@ export default function ChatPanel() {
       updateThread(activeThread.id, { messageCount: activeThread.messageCount + 1 })
     }
 
-    // Build combined context: decay-scored notes + project briefs + tensions + dependencies + threads
-    const notesCtx = buildNotesContext(sortedNotes)
+    // Build combined context: try semantic search first, fall back to decay-sorted notes
+    let contextNotes = sortedNotes
+    try {
+      const semanticResults = await semanticSearch(trimmed, 10)
+      if (semanticResults.length > 0) {
+        // Map semantic results back to full note objects, preserving semantic order
+        const semanticNoteIds = new Set(semanticResults.map(r => r.note_id))
+        const semanticNotes = semanticResults
+          .map(r => notes.find(n => n.id === r.note_id))
+          .filter((n): n is typeof notes[number] => n !== undefined)
+        // Add any decay-sorted notes not in semantic results (for coverage)
+        const remaining = sortedNotes.filter(n => !semanticNoteIds.has(n.id))
+        contextNotes = [...semanticNotes, ...remaining].slice(0, 10)
+      }
+    } catch {
+      // Backend unavailable — use decay-sorted notes (existing behavior)
+    }
+    const userCtx = buildUserContext(userProfile)
+    const notesCtx = buildNotesContext(contextNotes)
     const projectCtx = buildProjectContext(graphNodes)
     const tensionsCtx = buildTensionsContext(tensions)
     const depsCtx = buildDependencyContext(graphNodes)
     const threadCtx = buildThreadContext(threads)
-    const notesContext = [notesCtx, projectCtx, tensionsCtx, depsCtx, threadCtx]
+    const notesContext = [userCtx, notesCtx, projectCtx, tensionsCtx, depsCtx, threadCtx]
       .filter(Boolean)
       .join('\n\n---\n')
 

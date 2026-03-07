@@ -14,7 +14,7 @@ interface NavItem {
 }
 
 export default function Sidebar() {
-  const { view, setView, isSidebarCollapsed, toggleSidebar } = useUIStore()
+  const { view, setView, isSidebarCollapsed, toggleSidebar, openProfile } = useUIStore()
   const notes = useNotesStore(s => s.notes)
   const pendingReminders = useRemindersStore(s => s.pendingCount())
   const graphNodes = useGraphStore(s => s.nodes)
@@ -115,6 +115,7 @@ export default function Sidebar() {
       {/* Bottom: settings + collapse */}
       <div className="p-2 border-t flex flex-col gap-1" style={{ borderColor: '#2e2e35' }}>
         <button
+          onClick={openProfile}
           className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors w-full text-left"
           style={{ color: '#9090a8' }}
           onMouseEnter={e => {

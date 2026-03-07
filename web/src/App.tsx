@@ -1,5 +1,7 @@
 import { useEffect, useCallback } from 'react'
 import { useUIStore } from './stores/uiStore'
+import { useUserStore } from './stores/userStore'
+import OnboardingFlow from './components/onboarding/OnboardingFlow'
 import Sidebar from './components/layout/Sidebar'
 import TopBar from './components/layout/TopBar'
 import QuickCapture from './components/capture/QuickCapture'
@@ -15,7 +17,8 @@ import TensionsView from './components/tensions/TensionsView'
 import SieveView from './components/sieve/SieveView'
 
 export default function App() {
-  const { view, isChatOpen, setSearchQuery } = useUIStore()
+  const { view, isChatOpen, isProfileOpen, closeProfile, setSearchQuery } = useUIStore()
+  const isOnboarded = useUserStore(s => s.isOnboarded())
 
   // Global keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -30,6 +33,10 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
+
+  if (!isOnboarded) {
+    return <OnboardingFlow />
+  }
 
   return (
     <div
@@ -85,6 +92,11 @@ export default function App() {
           {isChatOpen && <ChatPanel />}
         </div>
       </div>
+
+      {/* Profile editor overlay */}
+      {isProfileOpen && (
+        <OnboardingFlow isEditing onClose={closeProfile} />
+      )}
     </div>
   )
 }
