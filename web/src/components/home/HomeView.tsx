@@ -82,9 +82,9 @@ export default function HomeView() {
   const threads = useThreadStore(s => s.threads)
   const nodes = useGraphStore(s => s.nodes)
   const tensions = useTensionsStore(s => s.tensions)
-  const { setView, openNote, toggleChat } = useUIStore(s => ({
-    setView: s.setView, openNote: s.openNote, toggleChat: s.toggleChat,
-  }))
+  const setView = useUIStore(s => s.setView)
+  const openNote = useUIStore(s => s.openNote)
+  const toggleChat = useUIStore(s => s.toggleChat)
   const counts = usePulseCounts()
 
   const [captureText, setCaptureText] = useState('')
