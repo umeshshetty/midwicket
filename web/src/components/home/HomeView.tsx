@@ -1,202 +1,181 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
-  Sun, Moon, Sunrise, Sunset, ArrowRight, FileText, MessageSquare,
-  AlertTriangle, AlertOctagon, Bell, Check, Plus, MessageCircleQuestion,
-  Clock, Sparkles,
+  Sun, Moon, Sunrise, Sunset, Plus, Brain,
+  AlertTriangle, Zap, Sparkles, MessageCircleQuestion,
+  ArrowRight, ChevronRight, Filter, CornerDownRight,
 } from 'lucide-react'
-import { format, formatDistanceToNow, isToday } from 'date-fns'
+import { format, formatDistanceToNow } from 'date-fns'
 import { useUserStore } from '../../stores/userStore'
 import { useNotesStore } from '../../stores/notesStore'
 import { useRemindersStore } from '../../stores/remindersStore'
-import { useThreadStore } from '../../stores/threadStore'
 import { useGraphStore } from '../../stores/graphStore'
 import { useTensionsStore } from '../../stores/tensionsStore'
+import { useSieveStore } from '../../stores/sieveStore'
+import { useCollisionStore } from '../../stores/collisionStore'
 import { useUIStore } from '../../stores/uiStore'
-import { usePulseCounts } from '../../lib/pulse'
 import { computeDecayScore } from '../../lib/decay'
-import { EntityChip, ProfileQuestionCard } from '../pulse/shared'
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-function getGreeting(name: string): { text: string; Icon: React.ElementType } {
+function getGreeting(name: string): { text: string; sub: string; Icon: React.ElementType } {
   const hour = new Date().getHours()
-  if (hour < 5) return { text: `Night owl, ${name}`, Icon: Moon }
-  if (hour < 12) return { text: `Good morning, ${name}`, Icon: Sunrise }
-  if (hour < 17) return { text: `Good afternoon, ${name}`, Icon: Sun }
-  if (hour < 21) return { text: `Good evening, ${name}`, Icon: Sunset }
-  return { text: `Good evening, ${name}`, Icon: Moon }
+  if (hour < 5) return { text: `Still at it, ${name}?`, sub: 'Your brain never sleeps.', Icon: Moon }
+  if (hour < 12) return { text: `Good morning, ${name}`, sub: 'What\'s on your mind today?', Icon: Sunrise }
+  if (hour < 17) return { text: `Good afternoon, ${name}`, sub: 'Let\'s keep the momentum going.', Icon: Sun }
+  if (hour < 21) return { text: `Good evening, ${name}`, sub: 'Time to think clearly.', Icon: Sunset }
+  return { text: `Evening, ${name}`, sub: 'Quiet hours are for deep thinking.', Icon: Moon }
 }
 
 function timeAgo(dateStr: string): string {
   return formatDistanceToNow(new Date(dateStr), { addSuffix: true })
 }
 
-// ─── Internal Components ─────────────────────────────────────────────────────
+// ─── Section wrapper ────────────────────────────────────────────────────────
 
-function SectionHeader({ icon: Icon, title, accentColor }: {
-  icon: React.ElementType; title: string; accentColor: string
-}) {
+function Section({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(true), delay)
+    return () => clearTimeout(timer)
+  }, [delay])
+
   return (
-    <div className="flex items-center gap-2 mb-3">
-      <Icon size={14} style={{ color: accentColor }} />
-      <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: accentColor }}>
-        {title}
-      </span>
+    <div
+      ref={ref}
+      className="transition-all duration-700 ease-out"
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(12px)',
+      }}
+    >
+      {children}
     </div>
   )
 }
 
-function SectionLink({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-1 text-xs mt-3 transition-colors"
-      style={{ color: '#5a5a72' }}
-      onMouseEnter={e => (e.currentTarget.style.color = '#8b5cf6')}
-      onMouseLeave={e => (e.currentTarget.style.color = '#5a5a72')}
-    >
-      {label} <ArrowRight size={11} />
-    </button>
-  )
-}
-
-function StatChip({ label, color }: { label: string; color: string }) {
-  return (
-    <span
-      className="text-xs rounded-full px-2.5 py-1"
-      style={{ background: `${color}12`, color }}
-    >
-      {label}
-    </span>
-  )
-}
-
-// ─── Main Component ──────────────────────────────────────────────────────────
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function HomeView() {
   const profile = useUserStore(s => s.profile)
   const notes = useNotesStore(s => s.notes)
   const addNote = useNotesStore(s => s.addNote)
   const reminders = useRemindersStore(s => s.reminders)
-  const toggleDone = useRemindersStore(s => s.toggleDone)
-  const threads = useThreadStore(s => s.threads)
-  const nodes = useGraphStore(s => s.nodes)
+  const graphNodes = useGraphStore(s => s.nodes)
   const tensions = useTensionsStore(s => s.tensions)
+  const sieveDumps = useSieveStore(s => s.dumps)
+  const collisions = useCollisionStore(s => s.collisions)
   const setView = useUIStore(s => s.setView)
-  const openNote = useUIStore(s => s.openNote)
-  const toggleChat = useUIStore(s => s.toggleChat)
-  const counts = usePulseCounts()
 
   const [captureText, setCaptureText] = useState('')
+  const [captureExpanded, setCaptureExpanded] = useState(false)
+  const captureRef = useRef<HTMLTextAreaElement>(null)
 
   const name = profile?.name?.split(' ')[0] ?? 'there'
   const greeting = getGreeting(name)
-
-  // ── Derived data ──────────────────────────────────────────────────────────
-
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
-  const overdueReminders = useMemo(
-    () => reminders.filter(r => !r.isDone && r.parsedDate && r.parsedDate < todayStr)
-      .sort((a, b) => (a.parsedDate! > b.parsedDate! ? 1 : -1)),
-    [reminders, todayStr]
-  )
+  // ── Focus capture on mount ────────────────────────────────────────────
+  useEffect(() => {
+    // Small delay so the fade-in animation plays first
+    const t = setTimeout(() => captureRef.current?.focus(), 600)
+    return () => clearTimeout(t)
+  }, [])
 
-  const todayReminders = useMemo(
-    () => reminders.filter(r => !r.isDone && r.parsedDate && r.parsedDate === todayStr),
-    [reminders, todayStr]
-  )
+  // ── 1. Pulse: Decaying ideas worth resurfacing ────────────────────────
 
-  const allTodayReminders = useMemo(
-    () => [...overdueReminders, ...todayReminders].slice(0, 8),
-    [overdueReminders, todayReminders]
-  )
-
-  // Attention items: overdue reminders + blockers + tensions (max 5)
-  const attentionItems = useMemo(() => {
-    const items: Array<{ type: string; text: string; color: string; view: () => void }> = []
-    for (const r of overdueReminders.slice(0, 2)) {
-      items.push({ type: 'overdue', text: r.action, color: '#f43f5e', view: () => setView('reminders') })
-    }
-    for (const n of nodes) {
-      if (n.type !== 'entity' || !n.metadata?.blockers?.length) continue
-      for (const b of n.metadata.blockers) {
-        items.push({ type: 'blocker', text: `${n.label}: ${b}`, color: '#f43f5e', view: () => setView('pulse') })
-      }
-    }
-    const pendingTensions = tensions.filter(t => !t.isDismissed && !t.isReconciled)
-    for (const t of pendingTensions.slice(0, 2)) {
-      items.push({ type: 'tension', text: `${t.entityLabel}: ${t.conflictDescription}`, color: '#f59e0b', view: () => setView('tensions') })
-    }
-    return items.slice(0, 5)
-  }, [overdueReminders, nodes, tensions, setView])
-
-  // Recent threads
-  const recentThreads = useMemo(
-    () => threads.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()).slice(0, 3),
-    [threads]
-  )
-
-  // Active projects
-  const activeProjects = useMemo(
-    () => nodes
-      .filter(n => n.type === 'entity' && n.entityType === 'project' && n.metadata?.status === 'active')
-      .slice(0, 3),
-    [nodes]
-  )
-
-  // Profile questions (top 3)
-  const profileQuestionItems = useMemo(() =>
-    nodes
-      .filter(n => n.type === 'entity' && n.metadata?.profileQuestions?.length)
-      .flatMap(n => n.metadata!.profileQuestions!
-        .filter(q => !q.isDismissed && !q.answeredNoteId)
-        .map(q => ({ ...q, nodeId: n.id, entityLabel: n.label, entityType: n.entityType }))
-      )
-      .sort((a, b) => {
-        const order: Record<string, number> = { high: 0, medium: 1, low: 2 }
-        return (order[a.priority] ?? 2) - (order[b.priority] ?? 2)
-      })
-      .slice(0, 3),
-    [nodes]
-  )
-
-  // Recent notes
-  const recentNotes = useMemo(
-    () => [...notes].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5),
-    [notes]
-  )
-
-  // Ambient resurfacing: entities with high value (many connections) but decaying (not recently mentioned)
-  const resurfacingItems = useMemo(() => {
-    const MIN_NOTES = 2
-    const MAX_RECENCY_DAYS = 3 // Skip entities mentioned in last 3 days
+  const pulseItems = useMemo(() => {
     const now = Date.now()
-    return nodes
+    return graphNodes
       .filter(n => {
-        if (n.type !== 'entity' || n.noteIds.length < MIN_NOTES) return false
+        if (n.type !== 'entity' || n.noteIds.length < 1) return false
         const lastMentioned = n.metadata?.lastMentionedAt
-        if (!lastMentioned) return true // Never has a date → definitely resurfaceable
+        if (!lastMentioned) return true
         const daysSince = (now - new Date(lastMentioned).getTime()) / 86400000
-        return daysSince >= MAX_RECENCY_DAYS
+        return daysSince >= 3
       })
       .map(n => {
-        // Use the most recent note's updatedAt for decay score
         const noteUpdates = n.noteIds
           .map(id => notes.find(note => note.id === id)?.updatedAt)
           .filter(Boolean) as string[]
         const latestUpdate = noteUpdates.sort().pop() ?? n.createdAt
-        const score = computeDecayScore(n.noteIds[0], latestUpdate, nodes)
-        return { node: n, score }
+        const score = computeDecayScore(n.noteIds[0], latestUpdate, graphNodes)
+        return { node: n, score, latestUpdate }
       })
-      .filter(item => item.score > 0.3) // Only surface items with meaningful value
+      .filter(item => item.score > 0.1)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 3)
-  }, [nodes, notes])
+      .slice(0, 5)
+  }, [graphNodes, notes])
 
-  const hasPickUp = recentThreads.length > 0 || activeProjects.length > 0
+  // ── 2. One high-impact tension OR profile question ────────────────────
 
-  // ── Quick Capture ─────────────────────────────────────────────────────────
+  const topChallenge = useMemo(() => {
+    // First, try an unresolved tension
+    const pendingTension = tensions.find(t => !t.isDismissed && !t.isReconciled)
+    if (pendingTension) {
+      return {
+        type: 'tension' as const,
+        tension: pendingTension,
+      }
+    }
+
+    // Fallback: a profile question (blindspot)
+    const profileQ = graphNodes
+      .filter(n => n.type === 'entity' && n.metadata?.profileQuestions?.length)
+      .flatMap(n => n.metadata!.profileQuestions!
+        .filter(q => !q.isDismissed && !q.answeredNoteId)
+        .map(q => ({ ...q, nodeSummary: n.metadata?.summary }))
+      )
+      .sort((a, b) => {
+        const order: Record<string, number> = { high: 0, medium: 1, low: 2 }
+        return (order[a.priority] ?? 2) - (order[b.priority] ?? 2)
+      })[0]
+
+    if (profileQ) {
+      return {
+        type: 'question' as const,
+        question: profileQ,
+      }
+    }
+
+    return null
+  }, [tensions, graphNodes])
+
+  // ── 3. Daily collision (most recent not bookmarked) ───────────────────
+
+  const dailyCollision = useMemo(() => {
+    return collisions.find(c => !c.isBookmarked) ?? collisions[0] ?? null
+  }, [collisions])
+
+  // ── 4. Unprocessed sieve items ────────────────────────────────────────
+
+  const unprocessedSieve = useMemo(() => {
+    // Find most recent dump that has items NOT yet converted to notes
+    for (const dump of sieveDumps) {
+      const pending = [
+        ...dump.actionable.filter(i => !i.noteId),
+        ...dump.incubating.filter(i => !i.noteId),
+        ...dump.questions.filter(i => !i.noteId),
+      ]
+      if (pending.length > 0) {
+        return { dump, pending: pending.slice(0, 3), totalPending: pending.length }
+      }
+    }
+    return null
+  }, [sieveDumps])
+
+  // ── 5. Overdue reminders (subtle, not primary) ────────────────────────
+
+  const overdueReminders = useMemo(
+    () => reminders
+      .filter(r => !r.isDone && r.parsedDate && r.parsedDate < todayStr)
+      .sort((a, b) => (a.parsedDate! > b.parsedDate! ? 1 : -1))
+      .slice(0, 2),
+    [reminders, todayStr]
+  )
+
+  // ── Quick Capture handler ─────────────────────────────────────────────
 
   function handleCapture() {
     const text = captureText.trim()
@@ -211,260 +190,360 @@ export default function HomeView() {
       sourceType: 'text',
     })
     setCaptureText('')
+    setCaptureExpanded(false)
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Has any content at all? ───────────────────────────────────────────
+  const hasContent = pulseItems.length > 0 || topChallenge || dailyCollision || unprocessedSieve || overdueReminders.length > 0
+
+  // ── Render ────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-y-auto" style={{ background: '#0c0c0d' }}>
-      <div className="max-w-2xl mx-auto w-full px-6 py-8 space-y-8">
+      <div className="max-w-xl mx-auto w-full px-6 py-8 space-y-0">
 
-        {/* ── Section 1: Greeting + Stats ──────────────────────────────────── */}
-        <div>
-          <div className="flex items-center gap-2.5 mb-1">
-            <greeting.Icon size={20} style={{ color: '#f59e0b' }} />
-            <h1 className="text-xl font-semibold" style={{ color: '#e8e8f0' }}>
-              {greeting.text}
-            </h1>
-          </div>
-          <p className="text-sm mb-4" style={{ color: '#5a5a72' }}>
-            {format(new Date(), 'EEEE, MMMM d, yyyy')}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <StatChip label={`${notes.length} note${notes.length !== 1 ? 's' : ''}`} color="#8b5cf6" />
-            {allTodayReminders.length > 0 && (
-              <StatChip label={`${allTodayReminders.length} due today`} color="#f59e0b" />
-            )}
-            {counts.actionable > 0 && (
-              <StatChip label={`${counts.actionable} need attention`} color="#f43f5e" />
-            )}
-          </div>
-        </div>
-
-        {/* ── Section 2: Needs Your Attention ──────────────────────────────── */}
-        {attentionItems.length > 0 && (
-          <div>
-            <SectionHeader icon={AlertOctagon} title="Needs Your Attention" accentColor="#f43f5e" />
-            <div className="space-y-1">
-              {attentionItems.map((item, i) => (
-                <button
-                  key={i}
-                  onClick={item.view}
-                  className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors text-left"
-                  style={{ background: 'rgba(255,255,255,0.02)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                >
-                  <span
-                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ background: item.color }}
-                  />
-                  <span className="text-sm flex-1 truncate" style={{ color: '#e8e8f0' }}>
-                    {item.text}
-                  </span>
-                  <span className="text-xs flex-shrink-0" style={{ color: '#5a5a72' }}>
-                    {item.type}
-                  </span>
-                </button>
-              ))}
+        {/* ── 1. Zero-Click Capture ─────────────────────────────────── */}
+        <Section delay={0}>
+          <div className="mb-10">
+            {/* Subtle greeting */}
+            <div className="flex items-baseline gap-3 mb-1">
+              <greeting.Icon size={16} style={{ color: '#f59e0b', opacity: 0.6 }} />
+              <h1 className="text-lg font-medium" style={{ color: '#e8e8f0' }}>
+                {greeting.text}
+              </h1>
             </div>
-            <SectionLink label="View all in Pulse" onClick={() => setView('pulse')} />
-          </div>
-        )}
+            <p className="text-sm mb-6 ml-7" style={{ color: '#3d3d47' }}>
+              {greeting.sub} <span style={{ color: '#2e2e35' }}>{format(new Date(), 'EEEE, MMMM d')}</span>
+            </p>
 
-        {/* ── Section 3: Pick Up Where You Left Off ────────────────────────── */}
-        {hasPickUp && (
-          <div>
-            <SectionHeader icon={MessageSquare} title="Pick Up Where You Left Off" accentColor="#8b5cf6" />
-            <div className="space-y-1">
-              {recentThreads.map(t => (
-                <button
-                  key={t.id}
-                  onClick={toggleChat}
-                  className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors text-left"
-                  style={{ background: 'rgba(255,255,255,0.02)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                >
-                  <MessageSquare size={13} style={{ color: '#8b5cf6', flexShrink: 0 }} />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium" style={{ color: '#e8e8f0' }}>{t.topic}</span>
-                    {t.summary && (
-                      <p className="text-xs truncate" style={{ color: '#5a5a72' }}>{t.summary}</p>
-                    )}
-                  </div>
-                  <span className="text-xs flex-shrink-0" style={{ color: '#3d3d47' }}>
-                    {timeAgo(t.lastActiveAt)}
-                  </span>
-                </button>
-              ))}
-              {activeProjects.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => setView('work')}
-                  className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors text-left"
-                  style={{ background: 'rgba(255,255,255,0.02)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                >
-                  <EntityChip label={p.label} entityType={p.entityType} />
-                  <span className="text-xs flex-1 truncate" style={{ color: '#5a5a72' }}>
-                    {p.metadata?.summary?.slice(0, 80) ?? p.metadata?.description ?? ''}
-                  </span>
-                  <ArrowRight size={12} style={{ color: '#3d3d47', flexShrink: 0 }} />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Section 4: Your Brain Wants to Know ──────────────────────────── */}
-        {profileQuestionItems.length > 0 && (
-          <div>
-            <SectionHeader icon={MessageCircleQuestion} title="Your Brain Wants to Know" accentColor="#14b8a6" />
-            <div className="space-y-1.5">
-              {profileQuestionItems.map(item => (
-                <ProfileQuestionCard
-                  key={item.id}
-                  item={item}
-                  onDismiss={(entityId, questionId) => {
-                    useGraphStore.getState().dismissProfileQuestion(entityId, questionId)
-                  }}
-                />
-              ))}
-            </div>
-            {counts.profileQuestions > 3 && (
-              <SectionLink label="See all in Pulse" onClick={() => setView('pulse')} />
-            )}
-          </div>
-        )}
-
-        {/* ── Section 5: Today's Reminders ─────────────────────────────────── */}
-        {allTodayReminders.length > 0 && (
-          <div>
-            <SectionHeader icon={Bell} title="Today's Reminders" accentColor="#f59e0b" />
-            <div className="space-y-0.5">
-              {allTodayReminders.map(r => {
-                const isOverdue = r.parsedDate! < todayStr
-                return (
-                  <div
-                    key={r.id}
-                    className="flex items-center gap-3 rounded-lg px-3 py-2.5"
-                    style={isOverdue ? { borderLeft: '2px solid #f43f5e' } : {}}
-                  >
-                    <button
-                      onClick={() => toggleDone(r.id)}
-                      className="w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors"
-                      style={{ borderColor: '#3d3d47' }}
-                      onMouseEnter={e => (e.currentTarget.style.borderColor = '#14b8a6')}
-                      onMouseLeave={e => (e.currentTarget.style.borderColor = '#3d3d47')}
-                    >
-                      <Check size={10} style={{ color: 'transparent' }} className="group-hover:text-teal-400" />
-                    </button>
-                    <span className="text-sm flex-1" style={{ color: '#e8e8f0' }}>{r.action}</span>
-                    {isOverdue && (
-                      <span className="text-xs flex-shrink-0" style={{ color: '#f43f5e' }}>overdue</span>
-                    )}
-                    {r.parsedDate && isToday(new Date(r.parsedDate + 'T00:00:00')) && (
-                      <Clock size={11} style={{ color: '#f59e0b', flexShrink: 0 }} />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-            <SectionLink label="View all reminders" onClick={() => setView('reminders')} />
-          </div>
-        )}
-
-        {/* ── Section 6: Recent Captures ───────────────────────────────────── */}
-        {recentNotes.length > 0 && (
-          <div>
-            <SectionHeader icon={FileText} title="Recent Captures" accentColor="#5a5a72" />
-            <div className="space-y-0.5">
-              {recentNotes.map(n => (
-                <button
-                  key={n.id}
-                  onClick={() => openNote(n.id)}
-                  className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors text-left"
-                  style={{ background: 'rgba(255,255,255,0.02)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                >
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium" style={{ color: '#e8e8f0' }}>
-                      {n.title}
-                    </span>
-                    <p className="text-xs truncate" style={{ color: '#5a5a72' }}>
-                      {n.plainText.slice(0, 80)}
-                    </p>
-                  </div>
-                  <span className="text-xs flex-shrink-0" style={{ color: '#3d3d47' }}>
-                    {timeAgo(n.createdAt)}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <SectionLink label="View all notes" onClick={() => setView('inbox')} />
-          </div>
-        )}
-
-        {/* ── Section 7: Ambient Resurfacing ──────────────────────────────── */}
-        {resurfacingItems.length > 0 && (
-          <div>
-            <SectionHeader icon={Sparkles} title="Rediscover" accentColor="#a78bfa" />
-            <div className="space-y-1">
-              {resurfacingItems.map(({ node, score }) => (
-                <button
-                  key={node.id}
-                  onClick={() => setView('wiki')}
-                  className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors text-left"
-                  style={{ background: 'rgba(255,255,255,0.02)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                >
-                  <EntityChip label={node.label} entityType={node.entityType} />
-                  <span className="text-xs flex-1 truncate" style={{ color: '#5a5a72' }}>
-                    {node.metadata?.summary?.slice(0, 60) ?? `${node.noteIds.length} notes`}
-                  </span>
-                  <span
-                    className="text-xs px-1.5 py-0.5 rounded-full flex-shrink-0"
-                    style={{ background: 'rgba(167,139,250,0.1)', color: '#a78bfa' }}
-                  >
-                    {node.metadata?.confidence?.level === 'assumption' ? 'assumption' : `${node.noteIds.length} refs`}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Section 8: Quick Capture ─────────────────────────────────────── */}
-        <div>
-          <div className="flex gap-2">
-            <input
-              value={captureText}
-              onChange={e => setCaptureText(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleCapture() }}
-              placeholder="Capture a thought..."
-              className="flex-1 text-sm rounded-xl px-4 py-3 outline-none transition-colors"
-              style={{ background: '#1a1a1d', border: '1px solid #2e2e35', color: '#e8e8f0' }}
-              onFocus={e => (e.currentTarget.style.borderColor = '#3d3d47')}
-              onBlur={e => (e.currentTarget.style.borderColor = '#2e2e35')}
-            />
-            <button
-              onClick={handleCapture}
-              disabled={!captureText.trim()}
-              className="rounded-xl px-3 py-3 transition-colors flex-shrink-0"
+            {/* The capture area: the main event */}
+            <div
+              className="rounded-2xl transition-all duration-300"
               style={{
-                background: captureText.trim() ? '#8b5cf6' : '#1a1a1d',
-                color: captureText.trim() ? 'white' : '#5a5a72',
-                border: `1px solid ${captureText.trim() ? '#8b5cf6' : '#2e2e35'}`,
+                background: '#111113',
+                border: captureExpanded ? '1px solid rgba(139,92,246,0.3)' : '1px solid #1a1a1d',
+                boxShadow: captureExpanded
+                  ? '0 0 0 1px rgba(139,92,246,0.1), 0 8px 40px rgba(0,0,0,0.3)'
+                  : '0 2px 12px rgba(0,0,0,0.2)',
               }}
             >
-              <Plus size={16} />
-            </button>
+              <textarea
+                ref={captureRef}
+                value={captureText}
+                onChange={e => setCaptureText(e.target.value)}
+                onFocus={() => setCaptureExpanded(true)}
+                onBlur={() => { if (!captureText.trim()) setCaptureExpanded(false) }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleCapture()
+                }}
+                placeholder="What's on your mind?"
+                rows={captureExpanded ? 4 : 2}
+                className="w-full bg-transparent text-sm resize-none outline-none px-5 pt-4 pb-2"
+                style={{ color: '#e8e8f0', lineHeight: 1.7 }}
+              />
+              <div className="flex items-center justify-between px-4 pb-3">
+                <span className="text-[11px]" style={{ color: '#2e2e35' }}>
+                  {captureExpanded ? '⌘+Enter to save' : ''}
+                </span>
+                <button
+                  onClick={handleCapture}
+                  disabled={!captureText.trim()}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-all duration-200"
+                  style={{
+                    background: captureText.trim() ? '#8b5cf6' : 'transparent',
+                    color: captureText.trim() ? 'white' : '#2e2e35',
+                  }}
+                >
+                  <Plus size={13} />
+                  Capture
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        </Section>
+
+        {/* If there's nothing to show yet, show a gentle nudge */}
+        {!hasContent && (
+          <Section delay={300}>
+            <div className="flex flex-col items-center text-center py-12">
+              <Brain size={32} style={{ color: '#1e1e22' }} />
+              <p className="text-sm mt-4" style={{ color: '#3d3d47' }}>
+                Your second brain is empty.
+              </p>
+              <p className="text-xs mt-1" style={{ color: '#2e2e35' }}>
+                Start capturing thoughts, and I'll begin connecting them.
+              </p>
+            </div>
+          </Section>
+        )}
+
+        {/* ── Overdue reminders (urgent, compact) ───────────────────── */}
+        {overdueReminders.length > 0 && (
+          <Section delay={200}>
+            <div className="mb-8">
+              {overdueReminders.map(r => (
+                <button
+                  key={r.id}
+                  onClick={() => setView('reminders')}
+                  className="w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-1.5 transition-colors text-left"
+                  style={{
+                    background: 'rgba(244,63,94,0.04)',
+                    border: '1px solid rgba(244,63,94,0.1)',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(244,63,94,0.08)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(244,63,94,0.04)')}
+                >
+                  <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: '#f43f5e' }} />
+                  <span className="text-sm flex-1" style={{ color: '#e8e8f0' }}>
+                    {r.action}
+                  </span>
+                  <span className="text-[11px] flex-shrink-0" style={{ color: '#f43f5e' }}>
+                    overdue
+                  </span>
+                </button>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* ── 2. The Pulse: Ambient Resurfacing ─────────────────────── */}
+        {pulseItems.length > 0 && (
+          <Section delay={400}>
+            <div className="mb-10">
+              <div className="flex items-center gap-2.5 mb-4">
+                <Sparkles size={14} style={{ color: '#a78bfa' }} />
+                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#5a5a72' }}>
+                  From your memory
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {pulseItems.map(({ node, latestUpdate }) => {
+                  const entityColors: Record<string, string> = {
+                    person: '#14b8a6', project: '#f59e0b', concept: '#8b5cf6',
+                    technology: '#3b82f6', organization: '#f97316', idea: '#e879f9',
+                    place: '#22c55e', event: '#f43f5e',
+                  }
+                  const color = entityColors[node.entityType ?? ''] ?? '#8b5cf6'
+                  return (
+                    <button
+                      key={node.id}
+                      onClick={() => setView('wiki')}
+                      className="w-full flex items-start gap-3.5 rounded-xl px-4 py-3.5 transition-all duration-200 text-left group"
+                      style={{ background: 'transparent' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <div
+                        className="w-1 rounded-full flex-shrink-0 mt-1"
+                        style={{ height: 32, background: `${color}40` }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-sm font-medium" style={{ color: '#e8e8f0' }}>
+                            {node.label}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: `${color}12`, color }}>
+                            {node.entityType}
+                          </span>
+                        </div>
+                        <p className="text-xs leading-relaxed" style={{ color: '#5a5a72' }}>
+                          {node.metadata?.summary?.slice(0, 120)
+                            ?? node.metadata?.wiki?.slice(0, 120)
+                            ?? `${node.noteIds.length} note${node.noteIds.length > 1 ? 's' : ''} · last active ${timeAgo(latestUpdate)}`}
+                        </p>
+                      </div>
+                      <ChevronRight
+                        size={14}
+                        className="flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        style={{ color: '#3d3d47' }}
+                      />
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </Section>
+        )}
+
+        {/* ── 3. One High-Impact Challenge ──────────────────────────── */}
+        {topChallenge && (
+          <Section delay={600}>
+            <div className="mb-10">
+              {topChallenge.type === 'tension' ? (
+                <button
+                  onClick={() => setView('tensions')}
+                  className="w-full rounded-2xl p-5 text-left transition-all duration-200 group"
+                  style={{
+                    background: 'rgba(245,158,11,0.03)',
+                    border: '1px solid rgba(245,158,11,0.1)',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(245,158,11,0.06)'
+                    e.currentTarget.style.borderColor = 'rgba(245,158,11,0.2)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'rgba(245,158,11,0.03)'
+                    e.currentTarget.style.borderColor = 'rgba(245,158,11,0.1)'
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertTriangle size={14} style={{ color: '#f59e0b' }} />
+                    <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#f59e0b' }}>
+                      Tension
+                    </span>
+                  </div>
+                  <p className="text-sm leading-relaxed mb-3" style={{ color: '#e8e8f0' }}>
+                    You recently wrote: <em style={{ color: '#f59e0b' }}>"{topChallenge.tension.newFact}"</em>
+                  </p>
+                  <p className="text-sm leading-relaxed mb-4" style={{ color: '#9090a8' }}>
+                    But earlier you established: <em>"{topChallenge.tension.existingFact}"</em>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium" style={{ color: '#f59e0b' }}>
+                      How do you reconcile this?
+                    </span>
+                    <ArrowRight size={12} style={{ color: '#f59e0b' }} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </button>
+              ) : (
+                <button
+                  onClick={() => setView('pulse')}
+                  className="w-full rounded-2xl p-5 text-left transition-all duration-200 group"
+                  style={{
+                    background: 'rgba(20,184,166,0.03)',
+                    border: '1px solid rgba(20,184,166,0.1)',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = 'rgba(20,184,166,0.06)'
+                    e.currentTarget.style.borderColor = 'rgba(20,184,166,0.2)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = 'rgba(20,184,166,0.03)'
+                    e.currentTarget.style.borderColor = 'rgba(20,184,166,0.1)'
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <MessageCircleQuestion size={14} style={{ color: '#14b8a6' }} />
+                    <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#14b8a6' }}>
+                      Your brain wants to know
+                    </span>
+                  </div>
+                  <p className="text-sm leading-relaxed mb-3" style={{ color: '#e8e8f0' }}>
+                    {topChallenge.question.question}
+                  </p>
+                  <p className="text-xs mb-3" style={{ color: '#5a5a72' }}>
+                    Re: <span style={{ color: '#14b8a6' }}>{topChallenge.question.entityLabel}</span>
+                    {topChallenge.question.reason && <> — {topChallenge.question.reason}</>}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-medium" style={{ color: '#14b8a6' }}>
+                      Answer this
+                    </span>
+                    <ArrowRight size={12} style={{ color: '#14b8a6' }} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </button>
+              )}
+            </div>
+          </Section>
+        )}
+
+        {/* ── 4. Daily Collision (Forced Serendipity) ───────────────── */}
+        {dailyCollision && (
+          <Section delay={800}>
+            <div className="mb-10">
+              <button
+                onClick={() => setView('collisions')}
+                className="w-full rounded-2xl p-5 text-left transition-all duration-200 group"
+                style={{
+                  background: 'rgba(139,92,246,0.03)',
+                  border: '1px solid rgba(139,92,246,0.1)',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(139,92,246,0.06)'
+                  e.currentTarget.style.borderColor = 'rgba(139,92,246,0.2)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(139,92,246,0.03)'
+                  e.currentTarget.style.borderColor = 'rgba(139,92,246,0.1)'
+                }}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <Zap size={14} style={{ color: '#8b5cf6' }} />
+                  <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#8b5cf6' }}>
+                    Collision
+                  </span>
+                </div>
+
+                {/* Entity pair */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(139,92,246,0.12)', color: '#a78bfa' }}>
+                    {dailyCollision.nodeA.label}
+                  </span>
+                  <Zap size={10} style={{ color: '#5a5a72' }} />
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(20,184,166,0.12)', color: '#14b8a6' }}>
+                    {dailyCollision.nodeB.label}
+                  </span>
+                </div>
+
+                <p className="text-sm italic leading-relaxed mb-1" style={{ color: '#e8e8f0' }}>
+                  "{dailyCollision.provocativeQuestion}"
+                </p>
+                <p className="text-xs leading-relaxed" style={{ color: '#5a5a72' }}>
+                  {dailyCollision.connection.slice(0, 150)}
+                </p>
+              </button>
+            </div>
+          </Section>
+        )}
+
+        {/* ── 5. Unprocessed Sieve Items ─────────────────────────────── */}
+        {unprocessedSieve && (
+          <Section delay={1000}>
+            <div className="mb-10">
+              <div className="flex items-center gap-2.5 mb-3">
+                <Filter size={14} style={{ color: '#a3e635' }} />
+                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#5a5a72' }}>
+                  From your last brain dump
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(163,230,53,0.12)', color: '#a3e635' }}>
+                  {unprocessedSieve.totalPending} ready
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                {unprocessedSieve.pending.map((item, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setView('sieve')}
+                    className="w-full flex items-center gap-3 rounded-xl px-4 py-3 transition-colors text-left"
+                    style={{ background: 'transparent' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <CornerDownRight size={12} style={{ color: '#3d3d47', flexShrink: 0 }} />
+                    <span className="text-sm flex-1 truncate" style={{ color: '#9090a8' }}>
+                      {item.text}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {unprocessedSieve.totalPending > 3 && (
+                <button
+                  onClick={() => setView('sieve')}
+                  className="flex items-center gap-1.5 text-xs mt-2 ml-4 transition-colors"
+                  style={{ color: '#3d3d47' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = '#a3e635')}
+                  onMouseLeave={e => (e.currentTarget.style.color = '#3d3d47')}
+                >
+                  See all {unprocessedSieve.totalPending} items <ArrowRight size={11} />
+                </button>
+              )}
+            </div>
+          </Section>
+        )}
 
       </div>
     </div>

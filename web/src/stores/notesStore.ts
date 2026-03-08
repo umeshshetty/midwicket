@@ -158,8 +158,62 @@ function scheduleAgentAnalysis(noteId: string): void {
         analyzeNoteForGraph(note, useGraphStore.getState(), notes),
         analyzeNoteForReminders(note, useRemindersStore.getState()),
       ])
+
+      // ── Reconciliation Agent: cross-system state resolution ──
+      // Fires after graph + reminder agents, checks if this note resolves open items
+      scheduleReconciliation(note)
     } catch (err) {
       console.warn('[AgentQueue] Analysis failed for note', noteId, err)
     }
   })
+}
+
+/**
+ * Fires the reconciliation agent after a delay (lets graph/reminder agents settle).
+ * Gathers all open state and asks Haiku if the note resolves any of it.
+ */
+function scheduleReconciliation(note: Note): void {
+  setTimeout(async () => {
+    try {
+      const [{ reconcileNote }, { useRemindersStore }, { useTensionsStore }, { useGraphStore }] =
+        await Promise.all([
+          import('../lib/agents/reconcileAgent'),
+          import('./remindersStore'),
+          import('./tensionsStore'),
+          import('./graphStore'),
+        ])
+
+      const openReminders = useRemindersStore.getState().reminders.filter(r => !r.isDone)
+      const openTensions = useTensionsStore.getState().tensions.filter(t => !t.isDismissed && !t.isReconciled)
+      const graphState = useGraphStore.getState()
+      const graphNodes = graphState.nodes
+
+      // Gather open profile questions across all entities
+      const openQuestions = graphNodes
+        .filter(n => n.type === 'entity' && n.metadata?.profileQuestions?.length)
+        .flatMap(n =>
+          n.metadata!.profileQuestions!
+            .filter(q => !q.isDismissed && !q.answeredNoteId)
+            .map(q => ({ ...q, entityId: n.id }))
+        )
+
+      // Tracked entities: people, projects, orgs that the system knows about
+      const trackedEntities = graphNodes.filter(n =>
+        n.type === 'entity' &&
+        n.entityType &&
+        ['person', 'project', 'organization'].includes(n.entityType)
+      )
+
+      await reconcileNote(note, openReminders, openTensions, openQuestions, trackedEntities, {
+        completeReminder: (id) => useRemindersStore.getState().toggleDone(id),
+        reconcileTension: (id, noteId) => useTensionsStore.getState().reconcileTension(id, noteId),
+        answerQuestion: (entityId, questionId, noteId) =>
+          useGraphStore.getState().answerProfileQuestion(entityId, questionId, noteId),
+        patchEntity: (entityId, patch) =>
+          useGraphStore.getState().patchEntityMetadata(entityId, patch),
+      })
+    } catch (err) {
+      console.warn('[ReconcileAgent] Schedule failed:', err)
+    }
+  }, 3000) // 3s delay — lets graph + reminder agents finish first
 }

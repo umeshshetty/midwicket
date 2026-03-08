@@ -52,6 +52,9 @@ interface GraphStore {
   setLastFullAnalysis: (date: string) => void
   clearGraph: () => void
 
+  // Entity metadata patching (for reconciliation agent)
+  patchEntityMetadata: (entityId: string, patch: Partial<EntityMetadata>) => void
+
   // Profile question lifecycle
   dismissProfileQuestion: (entityId: string, questionId: string) => void
   answerProfileQuestion: (entityId: string, questionId: string, noteId: string) => void
@@ -193,6 +196,15 @@ export const useGraphStore = create<GraphStore>()(
 
       setLastFullAnalysis: (date) => set({ lastFullAnalysis: date }),
       clearGraph: () => set({ nodes: [], edges: [], lastFullAnalysis: null }),
+
+      patchEntityMetadata: (entityId, patch) => {
+        set(s => ({
+          nodes: s.nodes.map(n => {
+            if (n.id !== entityId || n.type !== 'entity') return n
+            return { ...n, metadata: mergeMetadata(n.metadata, patch) }
+          }),
+        }))
+      },
 
       dismissProfileQuestion: (entityId, questionId) => {
         set(s => ({
