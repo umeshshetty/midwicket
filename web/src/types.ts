@@ -140,6 +140,7 @@ export interface Tension {
   isDismissed: boolean
   isReconciled: boolean
   reconcileNoteId?: string   // ID of synthesis note
+  reconcileReason?: string   // ≤15 word explanation of how it was resolved
   blastRadius?: number         // count of downstream entities impacted
   impactedEntities?: string[]  // labels of entities that depend on the contradicted fact
 }
@@ -315,6 +316,41 @@ export interface AssemblyOutline {
   selectedEntities: AssemblyItem[]
   sections: AssemblySection[]
   createdAt: string
+}
+
+// ─── AUDIT TRAIL TYPES ──────────────────────────────────────────────────────
+
+export type AuditActionType =
+  | 'complete_reminder'
+  | 'reopen_reminder'
+  | 'reconcile_tension'
+  | 'answer_question'
+  | 'mutate_entity'
+  | 'reopen_project'
+  | 'cascade_suggestion'
+
+export interface AuditEntry {
+  id: string
+  actionType: AuditActionType
+  description: string         // human-readable: "Marked 'Call Sarah' as completed"
+  reason: string              // agent's reason ≤15 words
+  targetId: string            // ID of the affected item (reminder, tension, entity, etc.)
+  noteId: string              // the note that triggered this action
+  createdAt: string
+  isUndone: boolean           // true if user clicked Undo
+}
+
+// ─── CASCADE SUGGESTION TYPES ───────────────────────────────────────────────
+
+export interface CascadeSuggestion {
+  id: string
+  entityId: string
+  entityLabel: string
+  newStatus: string           // "completed" | "on-hold"
+  linkedReminders: Array<{ id: string; action: string }>
+  linkedQuestions: Array<{ id: string; question: string; entityId: string }>
+  createdAt: string
+  isDismissed: boolean
 }
 
 // ─── FOCUS MODE TYPES ───────────────────────────────────────────────────────

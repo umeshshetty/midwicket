@@ -167,17 +167,28 @@ export default function TensionsView() {
             {showReconciled && (
               <div className="space-y-2">
                 {reconciled.map(t => (
-                  <div key={t.id} className="flex items-center gap-2">
-                    <div className="flex-1"><TensionCard tension={t} /></div>
-                    {t.reconcileNoteId && (
-                      <button
-                        onClick={() => openNote(t.reconcileNoteId!)}
-                        className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs flex-shrink-0"
-                        style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6' }}
-                        title="Open synthesis note"
+                  <div key={t.id} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1"><TensionCard tension={t} /></div>
+                      {t.reconcileNoteId && (
+                        <button
+                          onClick={() => openNote(t.reconcileNoteId!)}
+                          className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs flex-shrink-0"
+                          style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6' }}
+                          title="Open synthesis note"
+                        >
+                          <FileText size={11} /> Synthesis
+                        </button>
+                      )}
+                    </div>
+                    {t.reconcileReason && (
+                      <div
+                        className="ml-1 rounded-lg px-3 py-1.5 text-xs flex items-center gap-1.5"
+                        style={{ background: 'rgba(139,92,246,0.06)', color: '#9090a8' }}
                       >
-                        <FileText size={11} /> Synthesis
-                      </button>
+                        <CheckCircle size={11} style={{ color: '#8b5cf6', flexShrink: 0 }} />
+                        <span style={{ color: '#a78bfa' }}>Resolution:</span> {t.reconcileReason}
+                      </div>
                     )}
                   </div>
                 ))}

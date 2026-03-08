@@ -8,7 +8,7 @@ interface TensionsStore {
 
   addTension: (data: Omit<Tension, 'id' | 'createdAt' | 'isDismissed' | 'isReconciled'>) => void
   dismissTension: (id: string) => void
-  reconcileTension: (id: string, noteId: string) => void
+  reconcileTension: (id: string, noteId: string, reason?: string) => void
   pendingCount: () => number
   getTopPendingTensions: (limit?: number) => Tension[]
 }
@@ -45,10 +45,10 @@ export const useTensionsStore = create<TensionsStore>()(
         }))
       },
 
-      reconcileTension: (id, noteId) => {
+      reconcileTension: (id, noteId, reason?) => {
         set(s => ({
           tensions: s.tensions.map(t =>
-            t.id === id ? { ...t, isReconciled: true, reconcileNoteId: noteId } : t
+            t.id === id ? { ...t, isReconciled: true, reconcileNoteId: noteId, reconcileReason: reason } : t
           ),
         }))
       },

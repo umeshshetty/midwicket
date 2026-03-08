@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Send, X } from 'lucide-react'
+import { Send, X, Check } from 'lucide-react'
 import { useGraphStore } from '../../stores/graphStore'
 import { useNotesStore } from '../../stores/notesStore'
 import type { EntityType, ConfidenceLevel } from '../../types'
@@ -144,6 +144,122 @@ export function ProfileQuestionCard({
             className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
             style={{
               background: answer.trim() ? '#14b8a6' : '#2e2e35',
+              color: answer.trim() ? 'white' : '#5a5a72',
+            }}
+          >
+            Save
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Open Question Card (inline answering for entity open questions) ────────
+
+export function OpenQuestionCard({
+  entityLabel,
+  entityType,
+  entityId,
+  question,
+  questionIndex,
+}: {
+  entityLabel: string
+  entityType?: EntityType
+  entityId: string
+  question: string
+  questionIndex: number
+}) {
+  const [isAnswering, setIsAnswering] = useState(false)
+  const [answer, setAnswer] = useState('')
+  const [isAnswered, setIsAnswered] = useState(false)
+  const addNote = useNotesStore(s => s.addNote)
+
+  function handleSubmit() {
+    if (!answer.trim()) return
+    const noteContent = `About ${entityLabel}: ${answer.trim()}`
+    addNote({
+      content: JSON.stringify({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: noteContent }] }],
+      }),
+      plainText: noteContent,
+      title: `About ${entityLabel}`,
+      sourceType: 'text',
+    })
+    // Remove the question from the entity's openQuestions
+    const node = useGraphStore.getState().nodes.find(n => n.id === entityId)
+    if (node?.metadata?.openQuestions) {
+      const updated = node.metadata.openQuestions.filter((_, i) => i !== questionIndex)
+      useGraphStore.getState().patchEntityMetadata(entityId, { openQuestions: updated })
+    }
+    setIsAnswering(false)
+    setAnswer('')
+    setIsAnswered(true)
+  }
+
+  function handleDismiss() {
+    const node = useGraphStore.getState().nodes.find(n => n.id === entityId)
+    if (node?.metadata?.openQuestions) {
+      const updated = node.metadata.openQuestions.filter((_, i) => i !== questionIndex)
+      useGraphStore.getState().patchEntityMetadata(entityId, { openQuestions: updated })
+    }
+    setIsAnswered(true)
+  }
+
+  if (isAnswered) return null
+
+  return (
+    <div
+      className="rounded-lg p-3 transition-all"
+      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #2e2e35' }}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <EntityChip label={entityLabel} entityType={entityType} />
+          </div>
+          <p className="text-sm" style={{ color: '#e8e8f0' }}>{question}</p>
+        </div>
+        <div className="flex gap-1 flex-shrink-0">
+          {!isAnswering && (
+            <button
+              onClick={() => setIsAnswering(true)}
+              className="p-1 rounded hover:bg-white/5 transition-colors"
+              title="Answer this question"
+            >
+              <Send size={13} style={{ color: '#f59e0b' }} />
+            </button>
+          )}
+          <button
+            onClick={handleDismiss}
+            className="p-1 rounded hover:bg-white/5 transition-colors"
+            title="Dismiss"
+          >
+            <X size={13} style={{ color: '#5a5a72' }} />
+          </button>
+        </div>
+      </div>
+      {isAnswering && (
+        <div className="mt-2 flex gap-2">
+          <input
+            autoFocus
+            value={answer}
+            onChange={e => setAnswer(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleSubmit()
+              if (e.key === 'Escape') setIsAnswering(false)
+            }}
+            placeholder="Type your answer..."
+            className="flex-1 text-sm rounded-lg px-3 py-1.5 outline-none"
+            style={{ background: '#1a1a1d', border: '1px solid #3d3d47', color: '#e8e8f0' }}
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={!answer.trim()}
+            className="rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
+            style={{
+              background: answer.trim() ? '#f59e0b' : '#2e2e35',
               color: answer.trim() ? 'white' : '#5a5a72',
             }}
           >

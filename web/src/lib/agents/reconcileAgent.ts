@@ -15,7 +15,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import type { Note, Reminder, Tension, ProfileQuestion, GraphNode, EntityMetadata } from '../../types'
+import type { Note, Reminder, Tension, ProfileQuestion, GraphNode, GraphEdge, EntityMetadata, AuditActionType } from '../../types'
 
 const client = new Anthropic({
   apiKey: import.meta.env.VITE_ANTHROPIC_API_KEY,
@@ -58,6 +58,7 @@ interface CandidateEntity {
 
 interface ReconcileResult {
   completed_reminders: Array<{ id: string; reason: string }>
+  reopened_reminders: Array<{ id: string; reason: string }>
   reconciled_tensions: Array<{ id: string; reason: string }>
   answered_questions: Array<{ id: string; reason: string }>
   entity_mutations: Array<{
@@ -91,6 +92,18 @@ const RECONCILE_TOOL: Anthropic.Tool[] = [
             properties: {
               id: { type: 'string', description: 'The reminder ID' },
               reason: { type: 'string', description: 'Why this is completed, ≤15 words' },
+            },
+            required: ['id', 'reason'],
+          },
+        },
+        reopened_reminders: {
+          type: 'array',
+          description: 'Previously completed reminders that should be reopened because the note describes them as failed, undone, or back to pending.',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'The reminder ID' },
+              reason: { type: 'string', description: 'Why this needs reopening, ≤15 words' },
             },
             required: ['id', 'reason'],
           },
@@ -146,7 +159,7 @@ const RECONCILE_TOOL: Anthropic.Tool[] = [
           },
         },
       },
-      required: ['completed_reminders', 'reconciled_tensions', 'answered_questions', 'entity_mutations'],
+      required: ['completed_reminders', 'reopened_reminders', 'reconciled_tensions', 'answered_questions', 'entity_mutations'],
     },
   },
 ]
@@ -155,13 +168,16 @@ const SYSTEM_PROMPT = `You are a state reconciliation engine for a personal know
 A user has written a new note. Your job is to determine:
 1. Which existing open items (reminders, tensions, questions) are NOW resolved by this note.
 2. Which tracked entities (people, projects, organizations) have state changes described in this note.
+3. Which previously-completed reminders should be REOPENED because the note indicates failure or regression.
 
 Rules:
 - A reminder is "completed" if the note describes the task as done, finished, discussed, completed, or addressed. Semantic equivalence counts (e.g., "talked to Roger about alignment" completes "Discuss alignment with Roger").
+- A reminder should be "reopened" if the note indicates a previously-done task has failed, regressed, or needs to be redone (e.g., "the fix didn't work", "reopening the ticket", "need to redo the migration"). Only check DONE reminders for reopening.
 - A tension is "reconciled" if the note provides a clear updated position that resolves the contradiction.
 - A question is "answered" if the note contains information that directly addresses what was asked.
 - An entity mutation should be emitted when the note clearly describes a change to a tracked entity:
   • Project status changes: "kicked off", "launched", "put on hold", "completed", "shelved" → update status
+  • Project REGRESSION: "back to planning", "reopening", "un-shipping", "reverting launch" → regress status (e.g., completed → active, active → planning)
   • Person role/org changes: "left Acme", "joined StartupCo", "promoted to VP" → update role/organization
   • Relationship changes: "Roger is now my mentor" → update relationship_type
   • Description updates: only if the note reveals a fundamentally new understanding of what the project/org does
@@ -179,14 +195,19 @@ const DEBOUNCE_MS = 5000
 export async function reconcileNote(
   note: Note,
   openReminders: Reminder[],
+  doneReminders: Reminder[],
   openTensions: Tension[],
   openQuestions: Array<ProfileQuestion & { entityId: string }>,
   trackedEntities: GraphNode[],
+  graphEdges: GraphEdge[],
   callbacks: {
     completeReminder: (id: string) => void
-    reconcileTension: (id: string, noteId: string) => void
+    reopenReminder: (id: string) => void
+    reconcileTension: (id: string, noteId: string, reason?: string) => void
     answerQuestion: (entityId: string, questionId: string, noteId: string) => void
     patchEntity: (entityId: string, patch: Partial<EntityMetadata>) => void
+    addAuditEntry: (actionType: AuditActionType, description: string, reason: string, targetId: string) => void
+    addCascadeSuggestion: (entityId: string, entityLabel: string, newStatus: string, linkedReminders: Array<{ id: string; action: string }>, linkedQuestions: Array<{ id: string; question: string; entityId: string }>) => void
   }
 ): Promise<void> {
   if (!import.meta.env.VITE_ANTHROPIC_API_KEY) return
@@ -208,6 +229,12 @@ export async function reconcileNote(
   const candidateReminders: CandidateReminder[] = openReminders
     .filter(r => hasOverlap(r.action) || (r.person && noteText.includes(r.person.toLowerCase())))
     .slice(0, 10)
+    .map(r => ({ id: r.id, action: r.action, person: r.person, dateText: r.dateText }))
+
+  // Done reminders — candidates for reopening
+  const candidateDoneReminders: CandidateReminder[] = doneReminders
+    .filter(r => hasOverlap(r.action) || (r.person && noteText.includes(r.person.toLowerCase())))
+    .slice(0, 5)
     .map(r => ({ id: r.id, action: r.action, person: r.person, dateText: r.dateText }))
 
   const candidateTensions: CandidateTension[] = openTensions
@@ -242,6 +269,7 @@ export async function reconcileNote(
   // Nothing to reconcile at all
   const hasAnyCandidates =
     candidateReminders.length > 0 ||
+    candidateDoneReminders.length > 0 ||
     candidateTensions.length > 0 ||
     candidateQuestions.length > 0 ||
     candidateEntities.length > 0
@@ -249,7 +277,7 @@ export async function reconcileNote(
   if (!hasAnyCandidates) return
 
   try {
-    const userContent = buildPrompt(note, candidateReminders, candidateTensions, candidateQuestions, candidateEntities)
+    const userContent = buildPrompt(note, candidateReminders, candidateDoneReminders, candidateTensions, candidateQuestions, candidateEntities)
 
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -268,29 +296,39 @@ export async function reconcileNote(
     // ── Apply state changes ──────────────────────────────────────────────
 
     for (const r of result.completed_reminders ?? []) {
-      if (candidateReminders.some(cr => cr.id === r.id)) {
-        console.log(`[ReconcileAgent] Auto-completing reminder: ${r.reason}`)
+      const candidate = candidateReminders.find(cr => cr.id === r.id)
+      if (candidate) {
         callbacks.completeReminder(r.id)
+        callbacks.addAuditEntry('complete_reminder', `Marked "${candidate.action}" as completed`, r.reason, r.id)
+      }
+    }
+
+    for (const r of result.reopened_reminders ?? []) {
+      const candidate = candidateDoneReminders.find(cr => cr.id === r.id)
+      if (candidate) {
+        callbacks.reopenReminder(r.id)
+        callbacks.addAuditEntry('reopen_reminder', `Reopened "${candidate.action}"`, r.reason, r.id)
       }
     }
 
     for (const t of result.reconciled_tensions ?? []) {
       if (candidateTensions.some(ct => ct.id === t.id)) {
-        console.log(`[ReconcileAgent] Reconciling tension: ${t.reason}`)
-        callbacks.reconcileTension(t.id, note.id)
+        callbacks.reconcileTension(t.id, note.id, t.reason)
+        callbacks.addAuditEntry('reconcile_tension', `Resolved conflict about "${candidateTensions.find(ct => ct.id === t.id)!.entityLabel}"`, t.reason, t.id)
       }
     }
 
     for (const q of result.answered_questions ?? []) {
       const candidate = candidateQuestions.find(cq => cq.id === q.id)
       if (candidate) {
-        console.log(`[ReconcileAgent] Answering profile question: ${q.reason}`)
         callbacks.answerQuestion(candidate.entityId, q.id, note.id)
+        callbacks.addAuditEntry('answer_question', `Answered "${candidate.question}" about ${candidate.entityLabel}`, q.reason, q.id)
       }
     }
 
     for (const m of result.entity_mutations ?? []) {
-      if (!candidateEntities.some(ce => ce.id === m.id)) continue
+      const entity = candidateEntities.find(ce => ce.id === m.id)
+      if (!entity) continue
 
       // Build metadata patch from only the fields that were returned
       const patch: Partial<EntityMetadata> = {}
@@ -302,9 +340,20 @@ export async function reconcileNote(
       if (m.key_fact) patch.keyFact = m.key_fact
 
       if (Object.keys(patch).length > 0) {
-        const entity = candidateEntities.find(ce => ce.id === m.id)!
-        console.log(`[ReconcileAgent] Mutating entity "${entity.label}": ${m.reason}`, patch)
         callbacks.patchEntity(m.id, patch)
+
+        // Determine audit action type — check for project status regression
+        const isReopen = m.status && entity.currentStatus &&
+          (['completed', 'on-hold'].includes(entity.currentStatus)) &&
+          (['active', 'planning'].includes(m.status))
+        const actionType: AuditActionType = isReopen ? 'reopen_project' : 'mutate_entity'
+        callbacks.addAuditEntry(actionType, `Updated "${entity.label}": ${m.reason}`, m.reason, m.id)
+
+        // ── Extension 3: Cascading Dependency Sweep ──
+        // When a project moves to completed or on-hold, find linked open items
+        if (m.status && (m.status === 'completed' || m.status === 'on-hold')) {
+          triggerCascadeSweep(m.id, entity.label, m.status, trackedEntities, graphEdges, openReminders, openQuestions, callbacks)
+        }
       }
     }
   } catch (err) {
@@ -314,9 +363,59 @@ export async function reconcileNote(
 
 // ─── Prompt builder ─────────────────────────────────────────────────────────
 
+// ─── Cascading Dependency Sweep ──────────────────────────────────────────────
+
+function triggerCascadeSweep(
+  entityId: string,
+  entityLabel: string,
+  newStatus: string,
+  trackedEntities: GraphNode[],
+  edges: GraphEdge[],
+  openReminders: Reminder[],
+  openQuestions: Array<ProfileQuestion & { entityId: string }>,
+  callbacks: {
+    addCascadeSuggestion: (entityId: string, entityLabel: string, newStatus: string, linkedReminders: Array<{ id: string; action: string }>, linkedQuestions: Array<{ id: string; question: string; entityId: string }>) => void
+  }
+): void {
+  // Find all note IDs connected to this entity
+  const entity = trackedEntities.find(n => n.id === entityId)
+  if (!entity) return
+
+  const entityNoteIds = new Set(entity.noteIds)
+
+  // Also include notes from 1-hop connected entities
+  for (const edge of edges) {
+    let neighborId: string | null = null
+    if (edge.source === entityId) neighborId = edge.target
+    else if (edge.target === entityId) neighborId = edge.source
+    if (!neighborId) continue
+    const neighbor = trackedEntities.find(n => n.id === neighborId)
+    if (neighbor) {
+      for (const nid of neighbor.noteIds) entityNoteIds.add(nid)
+    }
+  }
+
+  // Find open reminders linked to this entity's notes
+  const linkedReminders = openReminders
+    .filter(r => entityNoteIds.has(r.noteId))
+    .map(r => ({ id: r.id, action: r.action }))
+
+  // Find open profile questions for this entity
+  const linkedQuestions = openQuestions
+    .filter(q => q.entityId === entityId)
+    .map(q => ({ id: q.id, question: q.question, entityId: q.entityId }))
+
+  if (linkedReminders.length > 0 || linkedQuestions.length > 0) {
+    callbacks.addCascadeSuggestion(entityId, entityLabel, newStatus, linkedReminders, linkedQuestions)
+  }
+}
+
+// ─── Prompt builder ─────────────────────────────────────────────────────────
+
 function buildPrompt(
   note: Note,
   reminders: CandidateReminder[],
+  doneReminders: CandidateReminder[],
   tensions: CandidateTension[],
   questions: CandidateQuestion[],
   entities: CandidateEntity[]
@@ -326,6 +425,14 @@ function buildPrompt(
   if (reminders.length > 0) {
     prompt += `OPEN REMINDERS:\n`
     for (const r of reminders) {
+      prompt += `- [ID:${r.id}] "${r.action}"${r.person ? ` (person: ${r.person})` : ''}\n`
+    }
+    prompt += '\n'
+  }
+
+  if (doneReminders.length > 0) {
+    prompt += `DONE REMINDERS (reopen if note says they failed/regressed):\n`
+    for (const r of doneReminders) {
       prompt += `- [ID:${r.id}] "${r.action}"${r.person ? ` (person: ${r.person})` : ''}\n`
     }
     prompt += '\n'

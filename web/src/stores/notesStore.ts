@@ -175,18 +175,22 @@ function scheduleAgentAnalysis(noteId: string): void {
 function scheduleReconciliation(note: Note): void {
   setTimeout(async () => {
     try {
-      const [{ reconcileNote }, { useRemindersStore }, { useTensionsStore }, { useGraphStore }] =
+      const [{ reconcileNote }, { useRemindersStore }, { useTensionsStore }, { useGraphStore }, { useAuditStore }] =
         await Promise.all([
           import('../lib/agents/reconcileAgent'),
           import('./remindersStore'),
           import('./tensionsStore'),
           import('./graphStore'),
+          import('./auditStore'),
         ])
 
-      const openReminders = useRemindersStore.getState().reminders.filter(r => !r.isDone)
+      const allReminders = useRemindersStore.getState().reminders
+      const openReminders = allReminders.filter(r => !r.isDone)
+      const doneReminders = allReminders.filter(r => r.isDone)
       const openTensions = useTensionsStore.getState().tensions.filter(t => !t.isDismissed && !t.isReconciled)
       const graphState = useGraphStore.getState()
       const graphNodes = graphState.nodes
+      const graphEdges = graphState.edges
 
       // Gather open profile questions across all entities
       const openQuestions = graphNodes
@@ -204,13 +208,18 @@ function scheduleReconciliation(note: Note): void {
         ['person', 'project', 'organization'].includes(n.entityType)
       )
 
-      await reconcileNote(note, openReminders, openTensions, openQuestions, trackedEntities, {
+      await reconcileNote(note, openReminders, doneReminders, openTensions, openQuestions, trackedEntities, graphEdges, {
         completeReminder: (id) => useRemindersStore.getState().toggleDone(id),
-        reconcileTension: (id, noteId) => useTensionsStore.getState().reconcileTension(id, noteId),
+        reopenReminder: (id) => useRemindersStore.getState().toggleDone(id),
+        reconcileTension: (id, noteId, reason?) => useTensionsStore.getState().reconcileTension(id, noteId, reason),
         answerQuestion: (entityId, questionId, noteId) =>
           useGraphStore.getState().answerProfileQuestion(entityId, questionId, noteId),
         patchEntity: (entityId, patch) =>
           useGraphStore.getState().patchEntityMetadata(entityId, patch),
+        addAuditEntry: (actionType, description, reason, targetId) =>
+          useAuditStore.getState().addEntry({ actionType, description, reason, targetId, noteId: note.id }),
+        addCascadeSuggestion: (entityId, entityLabel, newStatus, linkedReminders, linkedQuestions) =>
+          useAuditStore.getState().addCascadeSuggestion({ entityId, entityLabel, newStatus, linkedReminders, linkedQuestions }),
       })
     } catch (err) {
       console.warn('[ReconcileAgent] Schedule failed:', err)

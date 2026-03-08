@@ -2,16 +2,18 @@ import { useState, useMemo } from 'react'
 import {
   Activity, AlertTriangle, AlertOctagon, HelpCircle, EyeOff, Ghost,
   ChevronDown, ChevronRight, ArrowRight, CheckCircle,
-  MessageCircleQuestion, GitMerge, Clock,
+  MessageCircleQuestion, GitMerge, Clock, Undo2, ScrollText, Workflow,
 } from 'lucide-react'
 import { useGraphStore } from '../../stores/graphStore'
 import { useTensionsStore } from '../../stores/tensionsStore'
 import { useBlindspotStore } from '../../stores/blindspotStore'
+import { useAuditStore } from '../../stores/auditStore'
+import { useRemindersStore } from '../../stores/remindersStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePulseCounts } from '../../lib/pulse'
 import { useCognitiveDebt } from '../../lib/cognitiveDebt'
-import { EntityChip, ProfileQuestionCard } from './shared'
-import type { EntityType } from '../../types'
+import { EntityChip, ProfileQuestionCard, OpenQuestionCard } from './shared'
+import type { EntityType, AuditActionType } from '../../types'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -108,8 +110,8 @@ export default function PulseView() {
   const questionItems = useMemo(() =>
     nodes
       .filter(n => n.type === 'entity' && n.metadata?.openQuestions?.length)
-      .flatMap(n => n.metadata!.openQuestions!.map(q => ({
-        entityLabel: n.label, entityType: n.entityType, question: q,
+      .flatMap(n => n.metadata!.openQuestions!.map((q, i) => ({
+        entityId: n.id, entityLabel: n.label, entityType: n.entityType, question: q, questionIndex: i,
       }))),
     [nodes]
   )
@@ -197,6 +199,75 @@ export default function PulseView() {
       .sort((a, b) => a.noteIds.length - b.noteIds.length)
       .slice(0, 15)
   }, [nodes])
+
+  // Audit trail entries
+  const auditEntries = useAuditStore(s => s.entries).filter(e => !e.isUndone).slice(0, 15)
+
+  // Cascade suggestions
+  const cascadeSuggestions = useAuditStore(s => s.cascadeSuggestions).filter(c => !c.isDismissed)
+
+  function handleUndoAudit(entryId: string) {
+    const entry = useAuditStore.getState().undoEntry(entryId)
+    if (!entry) return
+    // Reverse the action
+    switch (entry.actionType) {
+      case 'complete_reminder':
+        // Toggle back to not done
+        useRemindersStore.getState().toggleDone(entry.targetId)
+        break
+      case 'reopen_reminder':
+        // Toggle back to done
+        useRemindersStore.getState().toggleDone(entry.targetId)
+        break
+      case 'reconcile_tension':
+        // Un-reconcile: not directly supported, but we can re-open by setting isReconciled false
+        useTensionsStore.getState().tensions.forEach(t => {
+          if (t.id === entry.targetId) {
+            useTensionsStore.setState(s => ({
+              tensions: s.tensions.map(tt =>
+                tt.id === entry.targetId ? { ...tt, isReconciled: false, reconcileNoteId: undefined, reconcileReason: undefined } : tt
+              ),
+            }))
+          }
+        })
+        break
+      case 'mutate_entity':
+      case 'reopen_project':
+        // Entity mutations are harder to undo generically — just mark as undone in audit
+        break
+    }
+  }
+
+  function handleAcceptCascade(cascadeId: string) {
+    const cascade = useAuditStore.getState().cascadeSuggestions.find(c => c.id === cascadeId)
+    if (!cascade) return
+    // Complete all linked reminders
+    for (const r of cascade.linkedReminders) {
+      useRemindersStore.getState().toggleDone(r.id)
+      useAuditStore.getState().addEntry({
+        actionType: 'complete_reminder',
+        description: `Cascade-completed "${r.action}" (${cascade.entityLabel} → ${cascade.newStatus})`,
+        reason: `Parent project moved to ${cascade.newStatus}`,
+        targetId: r.id,
+        noteId: '',
+      })
+    }
+    // Dismiss linked questions
+    for (const q of cascade.linkedQuestions) {
+      useGraphStore.getState().dismissProfileQuestion(q.entityId, q.id)
+    }
+    useAuditStore.getState().dismissCascade(cascadeId)
+  }
+
+  const AUDIT_ACTION_LABELS: Record<AuditActionType, { label: string; color: string }> = {
+    complete_reminder: { label: 'Completed', color: '#22c55e' },
+    reopen_reminder: { label: 'Reopened', color: '#f59e0b' },
+    reconcile_tension: { label: 'Resolved', color: '#8b5cf6' },
+    answer_question: { label: 'Answered', color: '#14b8a6' },
+    mutate_entity: { label: 'Updated', color: '#3b82f6' },
+    reopen_project: { label: 'Regressed', color: '#f97316' },
+    cascade_suggestion: { label: 'Cascade', color: '#e879f9' },
+  }
 
   function navigateToEntity(entityType?: EntityType) {
     if (entityType === 'person') setView('people')
@@ -312,15 +383,14 @@ export default function PulseView() {
             {/* Open Questions */}
             <PulseSection icon={HelpCircle} title="Open Questions" count={counts.openQuestions} accentColor="#f59e0b">
               {questionItems.map((item, i) => (
-                <PulseItem key={`q-${i}`} onClick={() => navigateToEntity(item.entityType)}>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <EntityChip label={item.entityLabel} entityType={item.entityType} />
-                    </div>
-                    <p className="text-sm" style={{ color: '#e8e8f0' }}>{item.question}</p>
-                  </div>
-                  <ArrowRight size={14} style={{ color: '#3d3d47', flexShrink: 0, marginTop: 2 }} />
-                </PulseItem>
+                <OpenQuestionCard
+                  key={`q-${item.entityId}-${i}`}
+                  entityLabel={item.entityLabel}
+                  entityType={item.entityType}
+                  entityId={item.entityId}
+                  question={item.question}
+                  questionIndex={item.questionIndex}
+                />
               ))}
             </PulseSection>
 
@@ -385,6 +455,94 @@ export default function PulseView() {
                   </div>
                 </PulseItem>
               ))}
+            </PulseSection>
+
+            {/* Cascade Suggestions */}
+            <PulseSection icon={Workflow} title="Cascading Cleanups" count={cascadeSuggestions.length} accentColor="#e879f9">
+              {cascadeSuggestions.map(cascade => (
+                <PulseItem key={cascade.id}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <EntityChip label={cascade.entityLabel} entityType="project" />
+                      <span className="text-xs" style={{ color: '#e879f9' }}>
+                        → {cascade.newStatus}
+                      </span>
+                    </div>
+                    <p className="text-xs mb-2" style={{ color: '#9090a8' }}>
+                      {cascade.linkedReminders.length} open task{cascade.linkedReminders.length !== 1 ? 's' : ''}
+                      {cascade.linkedQuestions.length > 0 && ` + ${cascade.linkedQuestions.length} question${cascade.linkedQuestions.length !== 1 ? 's' : ''}`}
+                      {' '}linked to this project. Close them?
+                    </p>
+                    <div className="space-y-1 mb-2">
+                      {cascade.linkedReminders.slice(0, 3).map(r => (
+                        <div key={r.id} className="text-xs px-2 py-1 rounded" style={{ background: 'rgba(255,255,255,0.03)', color: '#9090a8' }}>
+                          {r.action}
+                        </div>
+                      ))}
+                      {cascade.linkedReminders.length > 3 && (
+                        <div className="text-xs" style={{ color: '#5a5a72' }}>+{cascade.linkedReminders.length - 3} more</div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleAcceptCascade(cascade.id) }}
+                        className="text-xs px-3 py-1 rounded-lg transition-colors"
+                        style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(139,92,246,0.2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(139,92,246,0.1)')}
+                      >
+                        Close all
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); useAuditStore.getState().dismissCascade(cascade.id) }}
+                        className="text-xs px-3 py-1 rounded-lg transition-colors"
+                        style={{ background: 'rgba(255,255,255,0.04)', color: '#5a5a72' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                      >
+                        Keep open
+                      </button>
+                    </div>
+                  </div>
+                </PulseItem>
+              ))}
+            </PulseSection>
+
+            {/* Audit Trail */}
+            <PulseSection icon={ScrollText} title="AI Actions" count={auditEntries.length} accentColor="#5a5a72" defaultOpen={false}>
+              {auditEntries.map(entry => {
+                const meta = AUDIT_ACTION_LABELS[entry.actionType]
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex items-center gap-3 rounded-lg p-3"
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #2e2e35' }}
+                  >
+                    <span
+                      className="text-[10px] font-semibold rounded-full px-2 py-0.5 flex-shrink-0"
+                      style={{ background: `${meta.color}18`, color: meta.color }}
+                    >
+                      {meta.label}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs truncate" style={{ color: '#e8e8f0' }}>{entry.description}</p>
+                      <p className="text-[10px] mt-0.5" style={{ color: '#5a5a72' }}>
+                        {entry.reason} · {new Date(entry.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleUndoAudit(entry.id)}
+                      className="flex items-center gap-1 rounded px-2 py-1 text-[10px] transition-colors flex-shrink-0"
+                      style={{ color: '#5a5a72' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#f59e0b'; e.currentTarget.style.background = 'rgba(245,158,11,0.1)' }}
+                      onMouseLeave={e => { e.currentTarget.style.color = '#5a5a72'; e.currentTarget.style.background = 'transparent' }}
+                      title="Undo this action"
+                    >
+                      <Undo2 size={11} /> Undo
+                    </button>
+                  </div>
+                )
+              })}
             </PulseSection>
 
             {/* Blindspots */}
