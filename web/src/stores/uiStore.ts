@@ -1,5 +1,7 @@
 import { create } from 'zustand'
-import type { View } from '../types'
+import type { View, FocusContext } from '../types'
+import { computeFocusContext } from '../lib/focusFilter'
+import { useGraphStore } from './graphStore'
 
 interface UIStore {
   view: View
@@ -8,6 +10,7 @@ interface UIStore {
   isSidebarCollapsed: boolean
   searchQuery: string
   isProfileOpen: boolean
+  focusContext: FocusContext | null
   setView: (view: View) => void
   openNote: (id: string) => void
   closeNote: () => void
@@ -16,6 +19,8 @@ interface UIStore {
   setSearchQuery: (q: string) => void
   openProfile: () => void
   closeProfile: () => void
+  enterFocus: (entityId: string) => void
+  exitFocus: () => void
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -25,6 +30,7 @@ export const useUIStore = create<UIStore>((set) => ({
   isSidebarCollapsed: false,
   searchQuery: '',
   isProfileOpen: false,
+  focusContext: null,
 
   setView: (view) => set({ view, activeNoteId: null }),
   openNote: (id) => set({ view: 'note', activeNoteId: id }),
@@ -34,4 +40,10 @@ export const useUIStore = create<UIStore>((set) => ({
   setSearchQuery: (searchQuery) => set({ searchQuery, view: 'search' }),
   openProfile: () => set({ isProfileOpen: true }),
   closeProfile: () => set({ isProfileOpen: false }),
+  enterFocus: (entityId) => {
+    const { nodes, edges } = useGraphStore.getState()
+    const focusContext = computeFocusContext(entityId, nodes, edges)
+    set({ focusContext })
+  },
+  exitFocus: () => set({ focusContext: null }),
 }))

@@ -227,10 +227,10 @@ export default function SieveView() {
         <Filter size={20} style={{ color: '#8b5cf6' }} />
         <div>
           <h1 className="text-lg font-semibold" style={{ color: '#e8e8f0' }}>
-            Cognitive Sieve
+            Brain Dump
           </h1>
           <p className="text-xs" style={{ color: '#5a5a72' }}>
-            Dump everything. Let AI sort the chaos.
+            Unload everything on your mind. AI sorts it for you.
           </p>
         </div>
       </div>

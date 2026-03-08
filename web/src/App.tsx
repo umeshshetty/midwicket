@@ -19,6 +19,8 @@ import WikiView from './components/wiki/WikiView'
 import CollisionsView from './components/collisions/CollisionsView'
 import PulseView from './components/pulse/PulseView'
 import HomeView from './components/home/HomeView'
+import AssemblyView from './components/assembly/AssemblyView'
+import FocusBanner from './components/shared/FocusBanner'
 
 // ─── Error Boundary ──────────────────────────────────────────────────────────
 
@@ -150,6 +152,7 @@ function AppContent() {
 
           {/* Main panel */}
           <main className="flex flex-col flex-1 min-w-0">
+            <FocusBanner />
             {view === 'home' && (
               <HomeView />
             )}
@@ -191,6 +194,9 @@ function AppContent() {
             )}
             {view === 'sieve' && (
               <SieveView />
+            )}
+            {view === 'assembly' && (
+              <AssemblyView />
             )}
           </main>
 

@@ -7,7 +7,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
-import type { Note, EntityType } from '../../types'
+import type { Note, EntityType, ProvenancedWiki, ProvenanceSpan } from '../../types'
 import type { useGraphStore } from '../../stores/graphStore'
 
 type GraphStoreState = ReturnType<typeof useGraphStore.getState>
@@ -36,7 +36,7 @@ function _pruneDebounceMap(): void {
 const WIKI_TOOLS: Anthropic.Tool[] = [
   {
     name: 'generate_wiki_synthesis',
-    description: 'Generate a comprehensive synthesis page for an entity. Call exactly once.',
+    description: 'Generate a comprehensive synthesis page for an entity with source attribution. Call exactly once.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -44,8 +44,27 @@ const WIKI_TOOLS: Anthropic.Tool[] = [
           type: 'string',
           description: 'Comprehensive synthesis of everything known about this entity. 500-1000 words. Use markdown: ## headers, **bold**, - bullet lists. Structure: ## Overview, ## Key Details, ## Connections & Relationships, ## Open Questions.',
         },
+        provenance: {
+          type: 'array',
+          description: 'Source attribution for each statement in the wiki. Break the wiki into logical sentences/clauses and cite which note indices contributed.',
+          items: {
+            type: 'object',
+            properties: {
+              text: { type: 'string', description: 'A sentence or clause from the wiki content' },
+              source_note_indices: {
+                type: 'array', items: { type: 'number' },
+                description: 'Zero-based indices of notes that support this statement',
+              },
+              confidence: {
+                type: 'string', enum: ['direct', 'inferred', 'synthesized'],
+                description: 'direct = stated in notes, inferred = logically derived, synthesized = combining multiple sources',
+              },
+            },
+            required: ['text', 'source_note_indices', 'confidence'],
+          },
+        },
       },
-      required: ['wiki_content'],
+      required: ['wiki_content', 'provenance'],
     },
   },
 ]
@@ -59,7 +78,9 @@ Call generate_wiki_synthesis exactly once with a comprehensive, well-structured 
 - Highlight evolving understanding — if earlier notes say one thing and later notes another, note the evolution.
 - For people: include role, relationship, key interactions, context.
 - For concepts: explain the user's current understanding, how it connects to other ideas.
-- For projects: current state, history, stakeholders, decisions made.`
+- For projects: current state, history, stakeholders, decisions made.
+
+IMPORTANT: In the "provenance" array, break the wiki into logical sentences and for each one, cite which note indices (0-based) contributed to that statement. Mark confidence as "direct" if the note explicitly states it, "inferred" if you deduced it, or "synthesized" if you combined multiple sources.`
 
 export async function generateEntityWiki(
   entityId: string,
@@ -124,12 +145,34 @@ export async function generateEntityWiki(
     const toolBlock = response.content.find(b => b.type === 'tool_use')
     if (!toolBlock || toolBlock.type !== 'tool_use') return
 
-    const { wiki_content } = toolBlock.input as { wiki_content: string }
+    const { wiki_content, provenance } = toolBlock.input as {
+      wiki_content: string
+      provenance?: Array<{ text: string; source_note_indices: number[]; confidence: string }>
+    }
 
+    // Build provenanced wiki if provenance data was returned
+    let provenancedWiki: ProvenancedWiki | undefined
+    if (provenance && provenance.length > 0) {
+      const spans: ProvenanceSpan[] = provenance.map(p => ({
+        text: p.text,
+        sourceNoteIds: p.source_note_indices
+          .filter(i => i >= 0 && i < entityNotes.length)
+          .map(i => entityNotes[i].id),
+        confidence: (p.confidence as ProvenanceSpan['confidence']) ?? 'synthesized',
+      }))
+      provenancedWiki = {
+        spans,
+        generatedAt: new Date().toISOString(),
+        wikiVersion: (entityNode.metadata?.wikiVersion ?? 0) + 1,
+      }
+    }
+
+    const newVersion = (entityNode.metadata?.wikiVersion ?? 0) + 1
     graphStore.upsertEntityNode(entityLabel, entityType, triggeringNoteId, {
       wiki: wiki_content,
       lastWikiAt: new Date().toISOString().slice(0, 10),
-      wikiVersion: (entityNode.metadata?.wikiVersion ?? 0) + 1,
+      wikiVersion: newVersion,
+      provenancedWiki,
     })
   } catch (err) {
     console.warn('[WikiAgent] Failed for entity', entityLabel, err)

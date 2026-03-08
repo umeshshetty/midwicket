@@ -1,10 +1,11 @@
-import { Home, Inbox, Search, GitFork, Bell, Settings, Brain, ChevronLeft, ChevronRight, Users, Briefcase, AlertTriangle, Filter, BookOpen, Zap, Activity } from 'lucide-react'
+import { Home, Inbox, Search, GitFork, Bell, Settings, Brain, ChevronLeft, ChevronRight, Users, Briefcase, AlertTriangle, Filter, BookOpen, Zap, Activity, FileStack } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useNotesStore } from '../../stores/notesStore'
 import { useRemindersStore } from '../../stores/remindersStore'
 import { useGraphStore } from '../../stores/graphStore'
 import { useTensionsStore } from '../../stores/tensionsStore'
 import { usePulseCounts } from '../../lib/pulse'
+import { useCognitiveDebt } from '../../lib/cognitiveDebt'
 import type { View } from '../../types'
 
 interface NavItem {
@@ -12,6 +13,7 @@ interface NavItem {
   label: string
   icon: React.ElementType
   badge?: number
+  hint?: string  // tooltip description
 }
 
 export default function Sidebar() {
@@ -25,20 +27,22 @@ export default function Sidebar() {
   const tensionCount = useTensionsStore(s => s.pendingCount())
   const wikiCount = graphNodes.filter(n => n.type === 'entity' && n.metadata?.wiki).length
   const pulseCount = usePulseCounts().actionable
+  const debt = useCognitiveDebt()
 
   const navItems: NavItem[] = [
-    { id: 'home', label: 'Home', icon: Home },
-    { id: 'pulse', label: 'Pulse', icon: Activity, badge: pulseCount || undefined },
-    { id: 'inbox', label: 'Inbox', icon: Inbox, badge: notes.length },
-    { id: 'search', label: 'Search', icon: Search },
-    { id: 'graph', label: 'Graph', icon: GitFork },
-    { id: 'wiki', label: 'Wiki', icon: BookOpen, badge: wikiCount || undefined },
-    { id: 'reminders', label: 'Reminders', icon: Bell, badge: pendingReminders || undefined },
-    { id: 'people', label: 'People', icon: Users, badge: peopleCount || undefined },
-    { id: 'work', label: 'Work', icon: Briefcase, badge: workCount || undefined },
-    { id: 'tensions', label: 'Tensions', icon: AlertTriangle, badge: tensionCount || undefined },
-    { id: 'collisions', label: 'Collisions', icon: Zap },
-    { id: 'sieve', label: 'Sieve', icon: Filter },
+    { id: 'home', label: 'Home', icon: Home, hint: 'Your daily briefing' },
+    { id: 'pulse', label: 'Attention', icon: Activity, badge: pulseCount || undefined, hint: 'Things that need your input' },
+    { id: 'inbox', label: 'Notes', icon: Inbox, badge: notes.length, hint: 'All your captured thoughts' },
+    { id: 'search', label: 'Search', icon: Search, hint: 'Find anything' },
+    { id: 'graph', label: 'Connections', icon: GitFork, hint: 'How your ideas link together' },
+    { id: 'wiki', label: 'Knowledge', icon: BookOpen, badge: wikiCount || undefined, hint: 'Auto-generated summaries' },
+    { id: 'assembly', label: 'Compose', icon: FileStack, hint: 'Build outlines from your knowledge' },
+    { id: 'reminders', label: 'Reminders', icon: Bell, badge: pendingReminders || undefined, hint: 'Tasks and deadlines' },
+    { id: 'people', label: 'People', icon: Users, badge: peopleCount || undefined, hint: 'Everyone mentioned in your notes' },
+    { id: 'work', label: 'Projects', icon: Briefcase, badge: workCount || undefined, hint: 'Projects and organizations' },
+    { id: 'tensions', label: 'Conflicts', icon: AlertTriangle, badge: tensionCount || undefined, hint: 'When your notes contradict' },
+    { id: 'collisions', label: 'Sparks', icon: Zap, hint: 'Unexpected connections between ideas' },
+    { id: 'sieve', label: 'Brain Dump', icon: Filter, hint: 'Unload and sort your thoughts' },
   ]
 
   return (
@@ -82,6 +86,7 @@ export default function Sidebar() {
             <button
               key={item.id}
               onClick={() => setView(item.id)}
+              title={item.hint}
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-150 w-full text-left"
               style={{
                 background: isActive ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
@@ -118,6 +123,31 @@ export default function Sidebar() {
           )
         })}
       </nav>
+
+      {/* Cognitive Debt Meter */}
+      {debt.score > 0 && (
+        <div className="px-3 py-2" title={`Cognitive debt: ${debt.score}/100 (${debt.level})`}>
+          <div
+            className="h-1 rounded-full overflow-hidden"
+            style={{ background: '#1a1a1d' }}
+          >
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${debt.score}%`,
+                background: debt.level === 'low' ? '#22c55e'
+                  : debt.level === 'moderate' ? '#f59e0b'
+                  : '#f43f5e',
+              }}
+            />
+          </div>
+          {!isSidebarCollapsed && (
+            <p className="text-[10px] mt-1" style={{ color: '#3d3d47' }}>
+              {debt.level === 'low' ? 'Clear mind' : debt.level === 'moderate' ? 'Some open loops' : 'High cognitive load'}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Bottom: settings + collapse */}
       <div className="p-2 border-t flex flex-col gap-1" style={{ borderColor: '#2e2e35' }}>

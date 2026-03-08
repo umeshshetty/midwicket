@@ -119,7 +119,7 @@ export default function TensionsView() {
       <div className="px-6 pt-6 pb-4 border-b" style={{ borderColor: '#2e2e35' }}>
         <div className="flex items-center gap-2.5 mb-1">
           <AlertTriangle size={18} style={{ color: '#f43f5e' }} />
-          <h1 className="font-bold text-sm" style={{ color: '#e8e8f0' }}>Tensions</h1>
+          <h1 className="font-bold text-sm" style={{ color: '#e8e8f0' }}>Conflicts</h1>
           {pending.length > 0 && (
             <span
               className="text-xs rounded-full px-2 py-0.5"
@@ -130,7 +130,7 @@ export default function TensionsView() {
           )}
         </div>
         <p className="text-xs" style={{ color: '#5a5a72' }}>
-          Contradictions detected between your notes — facts that conflict with each other.
+          When your notes say different things — your second brain flags the contradiction.
         </p>
       </div>
 

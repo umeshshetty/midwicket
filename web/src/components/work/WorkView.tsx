@@ -336,7 +336,7 @@ export default function WorkView() {
         <div className="px-4 pt-5 pb-3 border-b" style={{ borderColor: '#2e2e35' }}>
           <div className="flex items-center gap-2 mb-3">
             <Briefcase size={18} style={{ color: '#f59e0b' }} />
-            <h1 className="font-bold text-sm" style={{ color: '#e8e8f0' }}>Work</h1>
+            <h1 className="font-bold text-sm" style={{ color: '#e8e8f0' }}>Projects</h1>
             <span
               className="ml-auto text-xs rounded-full px-2 py-0.5"
               style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}

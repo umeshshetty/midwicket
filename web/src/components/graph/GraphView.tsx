@@ -43,12 +43,12 @@ export default function GraphView() {
       >
         <div>
           <h2 className="text-sm font-semibold" style={{ color: '#e8e8f0' }}>
-            Knowledge Graph
+            Connections
           </h2>
           <p className="text-xs mt-0.5" style={{ color: '#9090a8' }}>
             {hasGraph
-              ? `${nodes.length} nodes · ${edges.length} edges${processingCount > 0 ? ` · Analyzing ${processingCount} note${processingCount !== 1 ? 's' : ''}…` : ''}`
-              : 'Entities, relationships, and cross-note links — built automatically'}
+              ? `${nodes.length} nodes · ${edges.length} connections${processingCount > 0 ? ` · Analyzing ${processingCount} note${processingCount !== 1 ? 's' : ''}…` : ''}`
+              : 'How your ideas, people, and projects link together — built automatically'}
           </p>
         </div>
         <BulkAnalyzeButton />

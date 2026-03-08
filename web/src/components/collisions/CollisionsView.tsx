@@ -143,10 +143,10 @@ export default function CollisionsView() {
       <div className="px-6 pt-6 pb-4 border-b" style={{ borderColor: '#2e2e35' }}>
         <div className="flex items-center gap-2.5 mb-1">
           <Zap size={18} style={{ color: '#f59e0b' }} />
-          <h1 className="font-bold text-sm" style={{ color: '#e8e8f0' }}>Collision Engine</h1>
+          <h1 className="font-bold text-sm" style={{ color: '#e8e8f0' }}>Sparks</h1>
         </div>
         <p className="text-xs mb-4" style={{ color: '#5a5a72' }}>
-          Forced serendipity — find creative connections between disconnected ideas.
+          Discover surprising connections between ideas you haven't linked yet.
         </p>
 
         <div className="flex items-center gap-3">

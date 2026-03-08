@@ -10,11 +10,13 @@ export interface PulseCounts {
   profileQuestions: number
   blindspots: number
   sparse: number
+  staleProjects: number
   total: number
-  actionable: number // tensions + blockers + openQuestions + profileQuestions
+  actionable: number // tensions + blockers + openQuestions + profileQuestions + staleProjects
 }
 
 const THIRTY_DAYS = 30 * 86400000
+const FORTY_FIVE_DAYS = 45 * 86400000
 
 export function usePulseCounts(): PulseCounts {
   const tensions = useTensionsStore(s => s.tensions)
@@ -28,6 +30,7 @@ export function usePulseCounts(): PulseCounts {
     let questionCount = 0
     let profileQuestionCount = 0
     let sparseCount = 0
+    let staleProjectCount = 0
     const now = Date.now()
 
     for (const n of nodes) {
@@ -44,10 +47,22 @@ export function usePulseCounts(): PulseCounts {
         ? (now - new Date(n.metadata.lastMentionedAt).getTime()) > THIRTY_DAYS
         : false
       if (isSparse || isStale) sparseCount++
+
+      // Stale project detection: project entities with active/undefined status, 45+ days stale
+      if (
+        n.entityType === 'project' &&
+        (!n.metadata?.status || n.metadata.status === 'active') &&
+        !n.metadata?.staleDismissedAt
+      ) {
+        const lastDate = n.metadata?.lastMentionedAt ?? n.createdAt
+        if ((now - new Date(lastDate).getTime()) > FORTY_FIVE_DAYS) {
+          staleProjectCount++
+        }
+      }
     }
 
     const blindspotCount = analyses.reduce((sum, a) => sum + a.blindspots.length, 0)
-    const actionable = tensionCount + blockerCount + questionCount + profileQuestionCount
+    const actionable = tensionCount + blockerCount + questionCount + profileQuestionCount + staleProjectCount
 
     return {
       tensions: tensionCount,
@@ -56,6 +71,7 @@ export function usePulseCounts(): PulseCounts {
       profileQuestions: profileQuestionCount,
       blindspots: blindspotCount,
       sparse: sparseCount,
+      staleProjects: staleProjectCount,
       total: actionable + blindspotCount + sparseCount,
       actionable,
     }

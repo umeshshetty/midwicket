@@ -2,13 +2,14 @@ import { useState, useMemo } from 'react'
 import {
   Activity, AlertTriangle, AlertOctagon, HelpCircle, EyeOff, Ghost,
   ChevronDown, ChevronRight, ArrowRight, CheckCircle,
-  MessageCircleQuestion, GitMerge,
+  MessageCircleQuestion, GitMerge, Clock,
 } from 'lucide-react'
 import { useGraphStore } from '../../stores/graphStore'
 import { useTensionsStore } from '../../stores/tensionsStore'
 import { useBlindspotStore } from '../../stores/blindspotStore'
 import { useUIStore } from '../../stores/uiStore'
 import { usePulseCounts } from '../../lib/pulse'
+import { useCognitiveDebt } from '../../lib/cognitiveDebt'
 import { EntityChip, ProfileQuestionCard } from './shared'
 import type { EntityType } from '../../types'
 
@@ -157,6 +158,30 @@ export default function PulseView() {
     [nodes]
   )
 
+  // Cognitive debt — adapts section ordering when overloaded
+  const debt = useCognitiveDebt()
+  const isHighDebt = debt.level === 'high' || debt.level === 'overloaded'
+
+  // Stale projects — active projects with no recent notes (45+ days)
+  const FORTY_FIVE_DAYS = 45 * 86400000
+  const staleProjects = useMemo(() => {
+    const now = Date.now()
+    return nodes
+      .filter(n => {
+        if (n.type !== 'entity' || n.entityType !== 'project') return false
+        if (n.metadata?.status && n.metadata.status !== 'active') return false
+        if (n.metadata?.staleDismissedAt) return false
+        const lastDate = n.metadata?.lastMentionedAt ?? n.createdAt
+        return (now - new Date(lastDate).getTime()) > FORTY_FIVE_DAYS
+      })
+      .map(n => {
+        const lastDate = n.metadata?.lastMentionedAt ?? n.createdAt
+        const daysSince = Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000)
+        return { node: n, daysSince }
+      })
+      .sort((a, b) => b.daysSince - a.daysSince)
+  }, [nodes])
+
   // Sparse or stale entities
   const sparseItems = useMemo(() => {
     const now = Date.now()
@@ -189,7 +214,7 @@ export default function PulseView() {
       <div className="px-6 pt-6 pb-4 border-b" style={{ borderColor: '#2e2e35' }}>
         <div className="flex items-center gap-2.5 mb-1">
           <Activity size={18} style={{ color: '#8b5cf6' }} />
-          <h1 className="font-bold text-sm" style={{ color: '#e8e8f0' }}>Pulse</h1>
+          <h1 className="font-bold text-sm" style={{ color: '#e8e8f0' }}>Attention</h1>
           {counts.actionable > 0 && (
             <span
               className="text-xs rounded-full px-2 py-0.5"
@@ -200,9 +225,30 @@ export default function PulseView() {
           )}
         </div>
         <p className="text-xs" style={{ color: '#5a5a72' }}>
-          Everything your second brain needs clarification on — in one place.
+          Things your second brain needs your help with — all in one place.
         </p>
       </div>
+
+      {/* Cognitive Debt Banner */}
+      {isHighDebt && (
+        <div
+          className="mx-6 mt-3 rounded-xl px-4 py-3 flex items-center gap-3"
+          style={{ background: 'rgba(244,63,94,0.06)', border: '1px solid rgba(244,63,94,0.12)' }}
+        >
+          <div
+            className="w-2 h-2 rounded-full flex-shrink-0"
+            style={{ background: '#f43f5e', animation: 'pulse 2s infinite' }}
+          />
+          <div className="flex-1">
+            <p className="text-xs font-medium" style={{ color: '#f43f5e' }}>
+              Cognitive load is {debt.level} — showing quick wins first
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: '#5a5a72' }}>
+              {debt.overdueReminders} overdue · {debt.tensions} tensions · {debt.unprocessedSieve} unprocessed
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 px-6 py-4 space-y-6">
@@ -232,7 +278,7 @@ export default function PulseView() {
             </PulseSection>
 
             {/* Tensions */}
-            <PulseSection icon={AlertTriangle} title="Tensions" count={counts.tensions} accentColor="#f43f5e">
+            <PulseSection icon={AlertTriangle} title="Contradictions" count={counts.tensions} accentColor="#f43f5e">
               {pendingTensions.map(t => (
                 <PulseItem key={t.id} onClick={() => setView('tensions')}>
                   <div className="flex-1 min-w-0">
@@ -294,8 +340,55 @@ export default function PulseView() {
               ))}
             </PulseSection>
 
+            {/* Stale Projects */}
+            <PulseSection icon={Clock} title="Neglected Projects" count={staleProjects.length} accentColor="#f97316">
+              {staleProjects.map(({ node, daysSince }) => (
+                <PulseItem key={node.id}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <EntityChip label={node.label} entityType={node.entityType} />
+                      <span className="text-[11px]" style={{ color: '#f97316' }}>
+                        {daysSince}d since last mention
+                      </span>
+                    </div>
+                    <p className="text-xs" style={{ color: '#9090a8' }}>
+                      Is this project still active?
+                    </p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          useGraphStore.getState().patchEntityMetadata(node.id, {
+                            staleDismissedAt: new Date().toISOString(),
+                          })
+                        }}
+                        className="text-xs px-3 py-1 rounded-lg transition-colors"
+                        style={{ background: 'rgba(20,184,166,0.1)', color: '#14b8a6' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(20,184,166,0.2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(20,184,166,0.1)')}
+                      >
+                        Still active
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          useGraphStore.getState().patchEntityMetadata(node.id, { status: 'on-hold' })
+                        }}
+                        className="text-xs px-3 py-1 rounded-lg transition-colors"
+                        style={{ background: 'rgba(244,63,94,0.1)', color: '#f43f5e' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(244,63,94,0.2)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(244,63,94,0.1)')}
+                      >
+                        No longer active
+                      </button>
+                    </div>
+                  </div>
+                </PulseItem>
+              ))}
+            </PulseSection>
+
             {/* Blindspots */}
-            <PulseSection icon={EyeOff} title="Blindspots" count={counts.blindspots} accentColor="#8b5cf6" defaultOpen={false}>
+            <PulseSection icon={EyeOff} title="Blind Spots" count={counts.blindspots} accentColor="#8b5cf6" defaultOpen={false}>
               {blindspotItems.map((item, i) => (
                 <PulseItem key={`bs-${i}`} onClick={() => navigateToEntity()}>
                   <div className="flex-1 min-w-0">
@@ -321,7 +414,7 @@ export default function PulseView() {
             </PulseSection>
 
             {/* Merge Suggestions */}
-            <PulseSection icon={GitMerge} title="Merge Candidates" count={mergeSuggestions.length} accentColor="#e879f9" defaultOpen={false}>
+            <PulseSection icon={GitMerge} title="Possible Duplicates" count={mergeSuggestions.length} accentColor="#e879f9" defaultOpen={false}>
               {mergeSuggestions.map(({ sourceNode, suggestion, targetNode }) => (
                 <PulseItem key={sourceNode.id} onClick={() => setView('wiki')}>
                   <div className="flex-1 min-w-0">
@@ -339,7 +432,7 @@ export default function PulseView() {
             </PulseSection>
 
             {/* Sparse / Stale */}
-            <PulseSection icon={Ghost} title="Needs More Context" count={counts.sparse} accentColor="#5a5a72" defaultOpen={false}>
+            <PulseSection icon={Ghost} title="Underdeveloped" count={counts.sparse} accentColor="#5a5a72" defaultOpen={false}>
               {sparseItems.map(node => {
                 const daysSince = node.metadata?.lastMentionedAt
                   ? Math.floor((Date.now() - new Date(node.metadata.lastMentionedAt).getTime()) / 86400000)

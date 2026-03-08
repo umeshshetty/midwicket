@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { BookOpen, RefreshCw, Search, FileText, Loader2, Scale } from 'lucide-react'
+import { BookOpen, RefreshCw, Search, FileText, Loader2, Scale, Focus } from 'lucide-react'
 import { useGraphStore } from '../../stores/graphStore'
 import { useNotesStore } from '../../stores/notesStore'
 import { useWikiStore } from '../../stores/wikiStore'
 import { useUIStore } from '../../stores/uiStore'
 import BlindspotPanel from '../blindspot/BlindspotPanel'
 import EvolutionTimeline from '../shared/EvolutionTimeline'
+import ProvenanceRenderer from '../shared/ProvenanceRenderer'
 import { ConfidenceBadge } from '../pulse/shared'
 import type { GraphNode, EntityType } from '../../types'
 
@@ -137,28 +138,55 @@ function WikiDetail({ node }: { node: GraphNode }) {
             {node.label}
           </h2>
         </div>
-        <button
-          onClick={handleRegenerate}
-          disabled={isRegenerating}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
-          style={{
-            background: 'rgba(139,92,246,0.1)',
-            color: '#8b5cf6',
-            opacity: isRegenerating ? 0.5 : 1,
-          }}
-        >
-          {isRegenerating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          {isRegenerating ? 'Generating…' : 'Regenerate'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => useUIStore.getState().enterFocus(node.id)}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
+            style={{ background: 'rgba(139,92,246,0.1)', color: '#8b5cf6' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(139,92,246,0.2)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(139,92,246,0.1)')}
+            title="Focus entire app on this entity"
+          >
+            <Focus size={12} />
+            Focus
+          </button>
+          <button
+            onClick={handleRegenerate}
+            disabled={isRegenerating}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
+            style={{
+              background: 'rgba(139,92,246,0.1)',
+              color: '#8b5cf6',
+              opacity: isRegenerating ? 0.5 : 1,
+            }}
+          >
+            {isRegenerating ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            {isRegenerating ? 'Generating…' : 'Regenerate'}
+          </button>
+        </div>
       </div>
 
-      {/* Wiki Content */}
+      {/* Wiki Content — with provenance overlay when available */}
       {node.metadata?.wiki ? (
-        <div
-          className="prose prose-invert max-w-none mb-8"
-          style={{ color: '#9090a8', fontSize: '0.875rem', lineHeight: 1.7 }}
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(node.metadata.wiki) }}
-        />
+        node.metadata?.provenancedWiki ? (
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
+                Traceable
+              </span>
+              <span className="text-[10px]" style={{ color: '#3d3d47' }}>
+                Click any statement to see its sources
+              </span>
+            </div>
+            <ProvenanceRenderer wiki={node.metadata.provenancedWiki} />
+          </div>
+        ) : (
+          <div
+            className="prose prose-invert max-w-none mb-8"
+            style={{ color: '#9090a8', fontSize: '0.875rem', lineHeight: 1.7 }}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(node.metadata.wiki) }}
+          />
+        )
       ) : (
         <div
           className="rounded-xl p-6 text-center mb-8"
@@ -279,7 +307,7 @@ export default function WikiView() {
         <div className="px-4 pt-5 pb-3">
           <div className="flex items-center gap-2 mb-3">
             <BookOpen size={16} style={{ color: '#8b5cf6' }} />
-            <h2 className="font-bold text-sm" style={{ color: '#e8e8f0' }}>Wiki</h2>
+            <h2 className="font-bold text-sm" style={{ color: '#e8e8f0' }}>Knowledge</h2>
             {wikiCount > 0 && (
               <span className="text-xs rounded-full px-2 py-0.5" style={{ background: 'rgba(139,92,246,0.12)', color: '#8b5cf6' }}>
                 {wikiCount}

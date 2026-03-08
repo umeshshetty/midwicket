@@ -20,7 +20,7 @@ export interface ChatMessage {
   isStreaming?: boolean
 }
 
-export type View = 'home' | 'inbox' | 'note' | 'search' | 'graph' | 'reminders' | 'people' | 'work' | 'tensions' | 'sieve' | 'wiki' | 'collisions' | 'pulse'
+export type View = 'home' | 'inbox' | 'note' | 'search' | 'graph' | 'reminders' | 'people' | 'work' | 'tensions' | 'sieve' | 'wiki' | 'collisions' | 'pulse' | 'assembly'
 
 export interface UIState {
   view: View
@@ -79,6 +79,10 @@ export interface EntityMetadata {
   counterThesis?: CounterThesis
   // Merge suggestion (theme clustering)
   mergeSuggestion?: MergeSuggestion
+  // Provenance tracking (AI-maintained)
+  provenancedWiki?: ProvenancedWiki  // structured wiki with source attribution
+  // Stale node tracking
+  staleDismissedAt?: string  // ISO date — user confirmed "still active", prevents re-prompting
 }
 
 export interface ProfileQuestion {
@@ -265,4 +269,60 @@ export interface Collision {
   strength: number           // 1-10
   createdAt: string
   isBookmarked: boolean
+}
+
+// ─── COGNITIVE DEBT ─────────────────────────────────────────────────────────
+
+export interface CognitiveDebt {
+  score: number                                       // 0-100
+  level: 'low' | 'moderate' | 'high' | 'overloaded'
+  tensions: number
+  overdueReminders: number
+  unprocessedSieve: number
+}
+
+// ─── PROVENANCE TYPES ───────────────────────────────────────────────────────
+
+export interface ProvenanceSpan {
+  text: string                                // the sentence or clause
+  sourceNoteIds: string[]                     // which notes contributed
+  confidence: 'direct' | 'inferred' | 'synthesized'
+}
+
+export interface ProvenancedWiki {
+  spans: ProvenanceSpan[]
+  generatedAt: string
+  wikiVersion: number
+}
+
+// ─── ASSEMBLY ENGINE TYPES ──────────────────────────────────────────────────
+
+export interface AssemblyItem {
+  entityId: string
+  entityLabel: string
+  entityType: EntityType
+}
+
+export interface AssemblySection {
+  heading: string
+  bullets: string[]
+  sourceNoteIds: string[]
+}
+
+export interface AssemblyOutline {
+  id: string
+  title: string
+  selectedEntities: AssemblyItem[]
+  sections: AssemblySection[]
+  createdAt: string
+}
+
+// ─── FOCUS MODE TYPES ───────────────────────────────────────────────────────
+
+export interface FocusContext {
+  entityId: string
+  entityLabel: string
+  entityType: EntityType
+  noteIds: string[]            // all notes connected to this entity (1-hop)
+  relatedEntityIds: string[]   // entities connected via edges
 }
